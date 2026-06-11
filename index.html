@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="description" content="Personal training logger — 6-week strength block">
+  <title>Training Logger</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+</head>
+<body>
+  <header id="topbar">
+    <button type="button" id="topbar-back" aria-label="back" hidden>‹</button>
+    <span id="topbar-title">Training Logger</span>
+    <button type="button" id="topbar-timer" aria-label="rest timer">⏱</button>
+  </header>
+
+  <main id="app">
+    <div class="card"><p class="muted">Loading…</p></div>
+  </main>
+
+  <nav id="bottomnav">
+    <a href="#/" data-view="home"><span class="nav-ico">🏠</span>Home</a>
+    <a href="#/maxes" data-view="maxes"><span class="nav-ico">🏋️</span>Maxes</a>
+    <a href="#/progress" data-view="progress"><span class="nav-ico">📈</span>Progress</a>
+    <a href="#/data" data-view="data"><span class="nav-ico">💾</span>Data</a>
+  </nav>
+
+  <div id="timer-sheet" hidden>
+    <div class="timer-head">
+      <span>Rest timer</span>
+      <button type="button" id="timer-close" aria-label="minimize">▾</button>
+    </div>
+    <div id="timer-display">Rest</div>
+    <div id="timer-presets">
+      <button type="button" data-s="30">30s</button>
+      <button type="button" data-s="45">45s</button>
+      <button type="button" data-s="60">60s</button>
+      <button type="button" data-s="90">90s</button>
+      <button type="button" data-s="120">2m</button>
+    </div>
+    <div class="timer-actions">
+      <button type="button" id="timer-plus">+15s</button>
+      <button type="button" id="timer-stop">Stop</button>
+    </div>
+  </div>
+
+  <button type="button" id="timer-pill" hidden>⏱ <span id="timer-pill-time">0:00</span></button>
+
+  <div id="toast" hidden></div>
+
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
