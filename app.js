@@ -511,52 +511,112 @@ async function saveMax(liftId, oneRM) {
 
 /* ------------------------------------------------------------ progress */
 
+/* display name for an exercise id, even if it's from a previous program */
+function prettyName(exId) {
+  const ex = findExercise(exId);
+  if (ex) return ex.name;
+  const lift = (App.program.maxLifts || []).find(l => l.id === exId);
+  if (lift) return lift.name;
+  return String(exId).replace(/^comp-/, '').split('-')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function shortDate(iso) {
+  if (!iso) return '';
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}.${p[1]}.` : iso;
+}
+
+/* Progress is built from ALL logged data, independent of the active program,
+   so history survives program swaps. */
 async function renderProgress(app) {
   $('#topbar-title').textContent = 'Progress';
   $('#topbar-back').hidden = false;
 
-  const allSets = await dbGetAll('sets');
-  const bw = await dbGetAll('bodyweight');
-  const bwMap = new Map(bw.map(b => [b.week, b.kg]));
+  const [allSets, sessions, bw] = await Promise.all([
+    dbGetAll('sets'), dbGetAll('sessions'), dbGetAll('bodyweight'),
+  ]);
+  const sessMap = new Map(sessions.map(s => [s.id, s]));
+  const ordered = sessions.slice().sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') || a.week - b.week || a.day.localeCompare(b.day));
+  const sessIndex = new Map(ordered.map((s, i) => [s.id, i]));
 
-  let liftCards = '';
-  for (const liftId of App.program.progressLifts) {
-    const ex = findExercise(liftId);
-    const name = ex ? ex.name : liftId;
-    const weekly = [];
-    for (let w = 1; w <= App.program.weeks; w++) {
-      const vals = allSets.filter(s => s.ex === liftId && s.week === w && s.wt > 0).map(s => s.wt);
-      weekly.push(vals.length ? Math.max(...vals) : null);
-    }
-    const has = weekly.some(v => v != null);
-    liftCards += `<div class="card chart-card">
-        <h2>${esc(name)}</h2>
-        ${has ? barChartSvg(weekly) : '<p class="muted">No logged sets yet.</p>'}
-      </div>`;
+  // per exercise: heaviest weight per session
+  const byEx = new Map();
+  for (const s of allSets) {
+    if (!(s.wt > 0)) continue;
+    const sid = `${s.week}|${s.day}`;
+    if (!byEx.has(s.ex)) byEx.set(s.ex, new Map());
+    const m = byEx.get(s.ex);
+    m.set(sid, Math.max(m.get(sid) || 0, s.wt));
   }
 
+  const orderedEx = [];
+  for (const id of (App.program.progressLifts || [])) if (byEx.has(id)) orderedEx.push(id);
+  for (const id of byEx.keys()) if (!orderedEx.includes(id)) orderedEx.push(id);
+
+  let liftCards = '';
+  for (const exId of orderedEx) {
+    const entries = Array.from(byEx.get(exId).entries())
+      .sort((a, b) => (sessIndex.has(a[0]) ? sessIndex.get(a[0]) : 999) - (sessIndex.has(b[0]) ? sessIndex.get(b[0]) : 999));
+    const values = entries.map(e => e[1]);
+    const labels = entries.map(e => {
+      const sess = sessMap.get(e[0]);
+      return sess && sess.date ? shortDate(sess.date) : 'W' + e[0].split('|')[0];
+    });
+    liftCards += `<div class="card chart-card">
+        <h2>${esc(prettyName(exId))}</h2>
+        ${barChartSvg(values, labels)}
+      </div>`;
+  }
+  if (!liftCards) liftCards = '<div class="card"><p class="muted">No logged weights yet.</p></div>';
+
+  // bodyweight: inputs for the active program's weeks, chart across all entries
+  const bwMap = new Map(bw.map(b => [b.week, b.kg]));
   let bwInputs = '';
-  const bwVals = [];
   for (let w = 1; w <= App.program.weeks; w++) {
     const v = bwMap.get(w);
-    bwVals.push(v != null ? v : null);
     bwInputs += `<label class="bw-cell">W${w}
         <input type="number" class="f-bw" inputmode="decimal" step="0.1" min="0" data-week="${w}"
                value="${v != null ? v : ''}" placeholder="kg"></label>`;
   }
-  const bwHas = bwVals.some(v => v != null);
+  const bwSorted = bw.slice().sort((a, b) => a.week - b.week);
+  const bwChart = bwSorted.length
+    ? lineChartSvg(bwSorted.map(b => b.kg), bwSorted.map(b => 'W' + b.week)) : '';
+
+  // history: every session ever logged, newest first
+  let hist = '';
+  for (const sess of ordered.slice().reverse()) {
+    const sets = allSets
+      .filter(x => `${x.week}|${x.day}` === sess.id && (x.done || x.reps != null || x.wt != null))
+      .sort((a, b) => a.ex.localeCompare(b.ex) || a.set - b.set);
+    if (!sets.length && !sess.notes) continue;
+    const day = getDay(sess.day);
+    const dayName = day ? day.name : prettyName(sess.day);
+    const lines = sets.map(x =>
+      `<li>${esc(prettyName(x.ex))} S${x.set + 1}: ${x.reps != null ? x.reps : '–'} × ${x.wt != null ? fmtNum(x.wt) + ' kg' : '–'}${x.rpe != null ? ' @' + x.rpe : ''}${x.done ? ' ✓' : ''}</li>`).join('');
+    hist += `<details class="hist-item">
+        <summary>${esc(sess.date || 'W' + sess.week)} · ${esc(dayName)} (W${sess.week}) — ${sets.length} sets</summary>
+        <ul>${lines}</ul>
+        ${sess.notes ? `<p class="hist-notes">${esc(sess.notes)}</p>` : ''}
+      </details>`;
+  }
 
   app.innerHTML = `
-    <p class="muted hint">Heaviest logged weight per week, weeks 1–${App.program.weeks}.</p>
+    <p class="muted hint">Heaviest logged weight per session — across all training blocks.</p>
     ${liftCards}
     <div class="card chart-card">
       <h2>Bodyweight (kg)</h2>
       <div class="bw-grid">${bwInputs}</div>
-      <div id="bw-chart">${bwHas ? lineChartSvg(bwVals) : ''}</div>
+      <div id="bw-chart">${bwChart}</div>
+    </div>
+    <div class="card">
+      <h2>History</h2>
+      ${hist || '<p class="muted">No sessions logged yet.</p>'}
     </div>`;
 }
 
-function barChartSvg(values) {
+function barChartSvg(values, labels) {
   const W = 320, H = 150, pad = 6, bottom = 18;
   const max = Math.max(...values.filter(v => v != null)) || 1;
   const n = values.length;
@@ -570,23 +630,25 @@ function barChartSvg(values) {
       bars += `<rect x="${(x + bw * 0.15).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw * 0.7).toFixed(1)}" height="${h.toFixed(1)}" rx="4" class="bar"/>
         <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" class="bar-val" text-anchor="middle">${fmtNum(v)}</text>`;
     }
-    bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 4}" class="bar-lab" text-anchor="middle">W${i + 1}</text>`;
+    const lab = labels ? labels[i] : 'W' + (i + 1);
+    bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 4}" class="bar-lab" text-anchor="middle">${esc(lab)}</text>`;
   });
-  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="weekly chart">${bars}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="progress chart">${bars}</svg>`;
 }
 
-function lineChartSvg(values) {
+function lineChartSvg(values, labels) {
   const W = 320, H = 130, pad = 14, bottom = 18;
   const present = values.filter(v => v != null);
   if (!present.length) return '';
   const min = Math.min(...present), max = Math.max(...present);
   const span = (max - min) || 1;
   const n = values.length;
-  const xs = i => pad + i * (W - pad * 2) / (n - 1);
+  const xs = i => n === 1 ? W / 2 : pad + i * (W - pad * 2) / (n - 1);
   const ys = v => 14 + (H - bottom - 28) * (1 - (v - min) / span);
   let pts = [], dots = '', labs = '';
   values.forEach((v, i) => {
-    labs += `<text x="${xs(i).toFixed(1)}" y="${H - 4}" class="bar-lab" text-anchor="middle">W${i + 1}</text>`;
+    const lab = labels ? labels[i] : 'W' + (i + 1);
+    labs += `<text x="${xs(i).toFixed(1)}" y="${H - 4}" class="bar-lab" text-anchor="middle">${esc(lab)}</text>`;
     if (v == null) return;
     pts.push(`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`);
     dots += `<circle cx="${xs(i).toFixed(1)}" cy="${ys(v).toFixed(1)}" r="4" class="dot"/>
@@ -1022,13 +1084,12 @@ function wireEvents() {
       const kg = parseNum(t.value);
       if (kg == null) await dbDelete('bodyweight', week);
       else await dbPut('bodyweight', { week, kg });
-      // refresh chart only
+      // refresh chart only (all entries, across blocks)
       const bw = await dbGetAll('bodyweight');
-      const map = new Map(bw.map(b => [b.week, b.kg]));
-      const vals = [];
-      for (let w = 1; w <= App.program.weeks; w++) vals.push(map.has(w) ? map.get(w) : null);
+      const sorted = bw.slice().sort((a, b) => a.week - b.week);
       const el = $('#bw-chart');
-      if (el) el.innerHTML = vals.some(v => v != null) ? lineChartSvg(vals) : '';
+      if (el) el.innerHTML = sorted.length
+        ? lineChartSvg(sorted.map(b => b.kg), sorted.map(b => 'W' + b.week)) : '';
       return;
     }
   });

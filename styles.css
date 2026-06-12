@@ -218,6 +218,13 @@ button { font: inherit; color: inherit; }
   border-radius: 10px; min-height: 44px; padding: 0 8px; font-size: 15px; width: 100%; text-align: center;
 }
 
+.hist-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 6px 0; }
+.hist-item:last-child { border-bottom: none; }
+.hist-item summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-size: 14.5px; }
+.hist-item ul { margin: 6px 0; padding-left: 20px; color: var(--muted); font-size: 13.5px; }
+.hist-item li { margin-bottom: 3px; }
+.hist-notes { color: var(--muted); font-size: 13.5px; font-style: italic; margin: 4px 0 6px; }
+
 /* ---------- data ---------- */
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .btn {
