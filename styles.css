@@ -93,7 +93,11 @@ button { font: inherit; color: inherit; }
 
 .block {
   border: 1px solid var(--border); border-radius: var(--radius);
-  margin-bottom: 14px; overflow: hidden;
+  margin-bottom: 14px;
+  /* clip (not hidden): overflow:hidden would make each block the sticky
+     header's scrollport, so headers float mid-block instead of sticking
+     under the top bar */
+  overflow: clip;
 }
 .band-0 { background: var(--surface); }
 .band-1 { background: var(--surface-2); }
