@@ -1,125 +1,107 @@
 {
-  "id": "block-2026-06",
-  "name": "6-Week Strength Block",
-  "weeks": 6,
+  "id": "comp-week-2026-06",
+  "name": "Comp Week — Taper",
+  "weeks": 1,
   "days": [
     {
-      "id": "lower",
-      "name": "Lower",
-      "title": "Day 1 — Lower",
+      "id": "comp-lower",
+      "name": "Lower (T-4)",
+      "title": "Day 1 — Lower Activation · Di 16.06 (T-4)",
       "warmup": {
-        "title": "Warm-up · ~8–10 min",
+        "title": "Warm-up · ~5 min",
         "items": [
-          "Mobility flow: hips, ankles, T-spine",
-          "Ramp-up sets — build to first working weight"
+          "5 min Rudermaschine — Schlagzahl langsam aufbauen",
+          "Ziel: CNS-Aktivierung, null Muskelkater. Max 40 min Gesamtdauer.",
+          "Wenn sich etwas schwer/komisch anfühlt → früher abbrechen. Scharf rausgehen, nicht müde."
         ]
       },
       "plyo": {
-        "title": "Plyo / Core",
+        "title": "Plyo / Core · nur 1 Runde (Slam Ball & Nordics gestrichen — DOMS-Risiko)",
         "items": [
-          { "name": "Reverse Pogos", "scheme": "20 reps · rest 30 s · 2–3 rounds" },
-          { "name": "Lateral Bound to Hop", "scheme": "8/side · rest 30 s · 2 rounds" },
-          { "name": "Slam Ball Slams", "scheme": "6 reps · rest 45 s · 2 rounds" },
-          { "name": "Nordic Curls", "scheme": "5 reps · rest 45 s · 2 rounds" }
+          {
+            "name": "Reverse Pogos",
+            "scheme": "20 reps · rest 30 s · nur 1 Runde"
+          },
+          {
+            "name": "Lateral Bound to Hop",
+            "scheme": "8/side · rest 30 s · nur 1 Runde"
+          }
         ]
       },
       "blocks": [
         {
-          "id": "L1",
+          "id": "C1",
           "type": "straight",
           "exercises": [
             {
-              "id": "hang-power-shrug",
+              "id": "comp-hang-power-shrug",
               "label": "1",
-              "name": "Hang Power Shrug",
+              "name": "Hang Power Shrug (~85% Last, RPE-Cap 5)",
               "sets": [
-                { "reps": "6", "rpe": 6, "weight": null },
-                { "reps": "5", "rpe": 7, "weight": null },
-                { "reps": "4", "rpe": 8, "weight": null }
+                { "reps": "6", "rpe": 5, "weight": null },
+                { "reps": "6", "rpe": 5, "weight": null }
               ]
             }
           ]
         },
         {
-          "id": "L2",
+          "id": "C2",
           "type": "superset",
-          "rounds": 3,
+          "rounds": 2,
           "exercises": [
-            { "id": "back-squat", "label": "2a", "name": "Back Squats", "target": { "reps": "3", "rpe": 8, "weight": 100 } },
-            { "id": "db-jumps", "label": "2b", "name": "DB Jumps", "target": { "reps": "10–12", "rpe": 6, "weight": 12 } }
+            {
+              "id": "comp-back-squat",
+              "label": "2a",
+              "name": "Back Squats (~85 kg, sonst ~100)",
+              "target": { "reps": "3", "rpe": 6, "weight": 85 }
+            },
+            {
+              "id": "comp-db-jumps",
+              "label": "2b",
+              "name": "DB Jumps (~10 kg, sonst ~12) — neuraler Primer",
+              "target": { "reps": "8", "rpe": 5, "weight": 10 }
+            }
           ]
         },
         {
-          "id": "L3",
+          "id": "C3",
           "type": "superset",
-          "rounds": 3,
+          "rounds": 2,
           "exercises": [
-            { "id": "rdl", "label": "3a", "name": "Romanian Deadlift", "target": { "reps": "3", "rpe": 8, "weight": 90 } },
-            { "id": "kb-swings", "label": "3b", "name": "KB Swings", "target": { "reps": "10–12", "rpe": 6, "weight": 12 } }
-          ]
-        },
-        {
-          "id": "L4",
-          "type": "superset",
-          "rounds": 3,
-          "exercises": [
-            { "id": "copenhagen-bridge", "label": "4a", "name": "Copenhagen Bridges (short lever)", "target": { "reps": "8/side", "rpe": 6, "weight": null } },
-            { "id": "curtsy-stepdown", "label": "4b", "name": "SL Curtsy Stepdowns", "target": { "reps": "10/side", "rpe": 6, "weight": 10 } },
-            { "id": "sb-leg-curl", "label": "4c", "name": "Stability Ball Leg Curls", "target": { "reps": "10", "rpe": 6, "weight": null } }
+            {
+              "id": "comp-rdl",
+              "label": "3a",
+              "name": "Romanian Deadlift (~75 kg, sonst ~90) — kein Grinding",
+              "target": { "reps": "3", "rpe": 6, "weight": 75 }
+            },
+            {
+              "id": "comp-kb-swings",
+              "label": "3b",
+              "name": "KB Swings",
+              "target": { "reps": "8", "rpe": 5, "weight": null }
+            }
           ]
         }
       ]
     },
     {
-      "id": "upper",
-      "name": "Upper",
-      "title": "Day 2 — Upper",
+      "id": "comp-upper",
+      "name": "Upper (T-2) — SKIP",
+      "title": "Day 2 — Upper · Do 18.06 (T-2) — SESSION GESTRICHEN",
       "warmup": {
-        "title": "Warm-up · ~8–10 min",
+        "title": "⚠️ Keine Krafteinheit — T-2-Regel",
         "items": [
-          "Mobility flow: shoulders, T-spine, wrists",
-          "Ramp-up sets — build to first working weight"
+          "Schwere Oberkörperarbeit 2 Tage vor dem Kampf = Restermüdung in Druck-/Zugmuskulatur",
+          "Bench & Rows 48h vorher → Schultern/Lats geladen → weniger Punch Speed am Fight Day",
+          "Körper braucht 48–72h, um metabolische Nebenprodukte einer Krafteinheit abzubauen",
+          "Stattdessen: 15 min Shadow Boxing am Morgen — Bewegung, Rhythmus, scharf fühlen. Das ist alles."
         ]
       },
       "plyo": {
-        "title": "Plyo / Core",
-        "items": [
-          { "name": "Reverse Pogos", "scheme": "20 reps · rest 30 s · 2–3 rounds" },
-          { "name": "Lateral Bound to Hop", "scheme": "8/side · rest 30 s · 2 rounds" },
-          { "name": "Slam Ball Slams", "scheme": "6 reps · rest 45 s · 2 rounds" },
-          { "name": "Nordic Curls", "scheme": "5 reps · rest 45 s · 2 rounds" }
-        ]
+        "title": "—",
+        "items": []
       },
-      "blocks": [
-        {
-          "id": "U1",
-          "type": "superset",
-          "rounds": 3,
-          "exercises": [
-            { "id": "sa-db-bench", "label": "1a", "name": "Single Arm DB Bench Press", "target": { "reps": "5/side", "rpe": 8, "weight": 22 } },
-            { "id": "banded-pushup", "label": "1b", "name": "Banded Push Ups / Lying MB Throw", "target": { "reps": "10–12", "rpe": 6, "weight": null } }
-          ]
-        },
-        {
-          "id": "U2",
-          "type": "superset",
-          "rounds": 3,
-          "exercises": [
-            { "id": "cable-fly", "label": "2a", "name": "Cabled Chest Flys", "target": { "reps": "12", "rpe": 6, "weight": null } },
-            { "id": "inverted-row", "label": "2b", "name": "Inverted Rows", "target": { "reps": "12", "rpe": 6, "weight": null } }
-          ]
-        },
-        {
-          "id": "U3",
-          "type": "superset",
-          "rounds": 3,
-          "exercises": [
-            { "id": "lateral-raise", "label": "3a", "name": "Lateral Raise", "target": { "reps": "15", "rpe": 6, "weight": null } },
-            { "id": "rear-delt-fly", "label": "3b", "name": "Rear Delt Fly", "target": { "reps": "15", "rpe": 6, "weight": null } },
-            { "id": "tricep-dips", "label": "3c", "name": "Tricep Dips", "target": { "reps": "15", "rpe": 6, "weight": null } }
-          ]
-        }
-      ]
+      "blocks": []
     }
   ],
   "maxLifts": [
@@ -129,5 +111,5 @@
     { "id": "trap-bar-squat", "name": "Trap Bar Squat" },
     { "id": "hip-thrust", "name": "Hip Thrust" }
   ],
-  "progressLifts": ["back-squat", "rdl", "sa-db-bench", "tricep-dips"]
+  "progressLifts": []
 }
