@@ -218,6 +218,19 @@ button { font: inherit; color: inherit; }
   border-radius: 10px; min-height: 44px; padding: 0 8px; font-size: 15px; width: 100%; text-align: center;
 }
 
+.archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
+.archive-item:last-child { border-bottom: none; }
+.archive-item summary {
+  cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 8px;
+  font-size: 14.5px; list-style: none;
+}
+.archive-item summary::-webkit-details-marker { display: none; }
+.arc-name { font-weight: 600; flex: 1; }
+.arc-date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.arc-count { color: var(--muted); font-size: 12.5px; min-width: 64px; text-align: right; }
+.archive-item ul { margin: 6px 0; padding-left: 20px; color: var(--muted); font-size: 13.5px; }
+.archive-item li { margin-bottom: 3px; }
+
 .hist-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 6px 0; }
 .hist-item:last-child { border-bottom: none; }
 .hist-item summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-size: 14.5px; }

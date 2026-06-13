@@ -660,6 +660,63 @@ function lineChartSvg(values, labels) {
 
 /* ---------------------------------------------------------------- data */
 
+/* completed = every set of the session is checked done.
+   Expected set count comes from the active program's day; if the session is from
+   an old/other block not in the active program, fall back to "all logged sets done". */
+function completedSessions(sets, sessions) {
+  const byId = new Map();   // sessId -> {total, done}
+  for (const s of sets) {
+    const id = `${s.week}|${s.day}`;
+    if (!byId.has(id)) byId.set(id, { total: 0, done: 0 });
+    const c = byId.get(id);
+    c.total++;
+    if (s.done) c.done++;
+  }
+  const out = [];
+  for (const sess of sessions) {
+    const c = byId.get(sess.id);
+    if (!c || c.total === 0) continue;
+    const day = getDay(sess.day);
+    let expected = null;
+    if (day) { expected = 0; forEachSet(day, () => expected++); }
+    const complete = expected != null
+      ? (c.done >= expected && c.done === c.total)   // active block: all prescribed + all logged done
+      : (c.done === c.total);                        // foreign block: all logged sets done
+    if (complete) out.push({ sess, doneCount: c.done });
+  }
+  out.sort((a, b) => (b.sess.date || '').localeCompare(a.sess.date || '')
+    || b.sess.week - a.sess.week || a.sess.day.localeCompare(b.sess.day));
+  return out;
+}
+
+function archiveCardHtml(sets, sessions) {
+  const done = completedSessions(sets, sessions);
+  let items = '';
+  for (const { sess, doneCount } of done) {
+    const day = getDay(sess.day);
+    const dayName = day ? day.name : prettyName(sess.day);
+    const rows = sets
+      .filter(x => `${x.week}|${x.day}` === sess.id)
+      .sort((a, b) => a.ex.localeCompare(b.ex) || a.set - b.set)
+      .map(x => `<li>${esc(prettyName(x.ex))} S${x.set + 1}: ${x.reps != null ? x.reps : '–'} × ${x.wt != null ? fmtNum(x.wt) + ' kg' : '–'}${x.rpe != null ? ' @' + x.rpe : ''} ✓</li>`)
+      .join('');
+    items += `<details class="archive-item">
+        <summary>
+          <span class="arc-name">🏆 ${esc(dayName)}</span>
+          <span class="arc-date">${esc(sess.date || 'W' + sess.week)}</span>
+          <span class="arc-count">${doneCount} Sätze</span>
+        </summary>
+        <ul>${rows}</ul>
+        ${sess.notes ? `<p class="hist-notes">${esc(sess.notes)}</p>` : ''}
+      </details>`;
+  }
+  return `<div class="card">
+      <h2>Archiv</h2>
+      <p class="muted hint">Vollständig abgeschlossene Trainings (alle Sätze ✓), neueste zuerst.</p>
+      ${items || '<p class="muted">Noch keine abgeschlossenen Trainings.</p>'}
+    </div>`;
+}
+
 async function renderData(app) {
   $('#topbar-title').textContent = 'Data';
   $('#topbar-back').hidden = false;
@@ -671,6 +728,7 @@ async function renderData(app) {
   const lastTxt = last ? new Date(last).toLocaleString() : 'never';
 
   app.innerHTML = `
+    ${archiveCardHtml(sets, sessions)}
     <div class="card">
       <h2>Backup</h2>
       <p class="muted">Logged sets: ${sets.length} · sessions: ${sessions.length} · maxes: ${maxes.length} · bodyweight entries: ${bw.length}<br>Last export: ${esc(lastTxt)}</p>
