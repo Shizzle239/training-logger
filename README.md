@@ -80,6 +80,15 @@ python -m http.server 8000
 
 `tools/make_icons.py` regenerates the PNG icons (stdlib only).
 
+## Distribution / future migration
+
+Currently shipped as a **TWA** (APK shell around the GitHub Pages site) — auto-updates
+on `git push`. For fully local, hosting-independent distribution to others, the app can
+later be bundled with **Capacitor**. The design rules that keep that migration cheap
+(relative paths, no hard service-worker dependency, program-import as the primary way to
+set a program, all assets local) are documented in **[CAPACITOR.md](CAPACITOR.md)** —
+follow them for every future change.
+
 ## Project layout
 
 ```
