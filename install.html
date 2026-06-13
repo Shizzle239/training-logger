@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>Training Logger — Installation</title>
+  <style>
+    :root { --bg:#0f1115; --surface:#181b22; --surface2:#1f232d; --border:#2a2f3a;
+      --text:#e8eaf0; --muted:#9aa1ad; --accent:#34d27b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      line-height:1.55; padding:20px 16px 48px; }
+    main { max-width:560px; margin:0 auto; }
+    h1 { font-size:22px; margin:4px 0 2px; }
+    h2 { font-size:17px; margin:0 0 10px; }
+    .sub { color:var(--muted); margin:0 0 18px; }
+    .open { display:block; text-align:center; background:var(--accent); color:#06240f;
+      font-weight:800; text-decoration:none; border-radius:12px; padding:14px;
+      font-size:16px; margin:0 0 22px; }
+    .card { background:var(--surface); border:1px solid var(--border);
+      border-radius:14px; padding:16px; margin-bottom:14px; }
+    .tag { display:inline-block; font-size:12px; font-weight:700; color:var(--accent);
+      background:rgba(52,210,123,.14); border:1px solid var(--accent);
+      border-radius:7px; padding:2px 8px; margin-bottom:10px; }
+    ol { margin:8px 0 0; padding-left:22px; } li { margin-bottom:7px; }
+    code { background:var(--surface2); padding:1px 6px; border-radius:5px; font-size:.92em; }
+    .note { color:var(--muted); font-size:13.5px; margin-top:10px; }
+    .warn { border-color:#e0b341; }
+    .warn .tag { color:#e0b341; background:rgba(224,179,65,.14); border-color:#e0b341; }
+    a { color:var(--accent); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Training Logger</h1>
+  <p class="sub">Offline-Trainingstagebuch · kein Konto · Daten bleiben auf deinem Gerät.</p>
+
+  <a class="open" href="./">▶ App jetzt öffnen</a>
+
+  <div class="card">
+    <span class="tag">📱 Android</span>
+    <h2>In Chrome installieren</h2>
+    <ol>
+      <li>Diese Seite in <b>Chrome</b> öffnen, oben „App öffnen" tippen.</li>
+      <li>Menü (⋮) → <b>„App installieren"</b> bzw. „Zum Startbildschirm".</li>
+      <li>Vom Startbildschirm öffnen — Vollbild &amp; offline.</li>
+    </ol>
+    <p class="note">Alternativ als APK (falls vom Absender erhalten): Datei öffnen →
+      „Installation aus unbekannten Quellen" einmalig erlauben → installieren.</p>
+  </div>
+
+  <div class="card">
+    <span class="tag">🍎 iPhone / iPad</span>
+    <h2>In Safari installieren</h2>
+    <ol>
+      <li>Diese Seite in <b>Safari</b> öffnen (wichtig: Safari, nicht Chrome).</li>
+      <li><b>Teilen-Symbol</b> (Quadrat mit Pfeil ↑) tippen.</li>
+      <li><b>„Zum Home-Bildschirm"</b> → <b>Hinzufügen</b>.</li>
+      <li>App vom Home-Bildschirm öffnen — Vollbild, mit Icon, offline.</li>
+    </ol>
+    <p class="note">Kein App Store / keine APK nötig. Erster Start einmal mit Internet.</p>
+  </div>
+
+  <div class="card">
+    <span class="tag">▶️ Erste Schritte</span>
+    <h2>Programm laden &amp; loggen</h2>
+    <ol>
+      <li>App einmal mit Internet öffnen.</li>
+      <li>Tab <b>Data</b> → <b>„Programm importieren (JSON)"</b> → erhaltene
+        <code>program.json</code> wählen.</li>
+      <li>Tab <b>Home</b> → Woche + Tag wählen → Sätze loggen.</li>
+    </ol>
+  </div>
+
+  <div class="card warn">
+    <span class="tag">💾 Daten sichern</span>
+    <h2>Regelmässig exportieren</h2>
+    <ol>
+      <li>Tab <b>Data</b> → <b>„Export JSON (full backup)"</b> → Datei sicher ablegen.</li>
+      <li>Wiederherstellen: <b>Data</b> → <b>Import JSON</b>.</li>
+    </ol>
+    <p class="note">iPhone löscht App-Daten, wenn die App ~2 Wochen nicht geöffnet
+      wird (Apple-Regel) — dort besonders auf Exporte achten. „Browserdaten löschen"
+      entfernt ebenfalls deine Trainings: vorher exportieren.</p>
+  </div>
+
+  <p class="note">Kein Server, keine Synchronisation. Jeder Nutzer hat seine eigene,
+    getrennte Datenhaltung — deine Daten verlassen das Gerät nur, wenn du selbst eine
+    Export-Datei weitergibst.</p>
+</main>
+</body>
+</html>
