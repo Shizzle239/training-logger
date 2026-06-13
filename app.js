@@ -768,10 +768,13 @@ async function renderData(app) {
     </div>
     <div class="card">
       <h2>Program</h2>
-      <p class="muted">The training program lives in <code>program.json</code>. Edit that file (and redeploy), then reload it here. Logged data is kept.</p>
+      <p class="muted">Aktuell: <b>${esc(App.program.name)}</b> · ${App.program.weeks} Wochen.
+        Importiere eine <code>program.json</code> (z. B. von jemandem geteilt) oder lade die gehostete neu. Geloggte Daten bleiben erhalten.</p>
       <div class="btn-row">
-        <button type="button" class="btn" id="reload-program">Reload program from file</button>
+        <button type="button" class="btn" id="import-program-btn">Programm importieren (JSON)…</button>
+        <button type="button" class="btn" id="reload-program">Gehostetes neu laden</button>
       </div>
+      <input type="file" id="import-program-file" accept=".json,application/json" hidden>
     </div>
     <div class="card danger-card">
       <h2>Danger zone</h2>
@@ -848,6 +851,35 @@ async function importJSONFile(file) {
   if (data.bodyweight && data.bodyweight.length) await dbBulkPut('bodyweight', data.bodyweight);
   if (data.program) App.program = data.program;
   toast('Backup restored ✓');
+  render();
+}
+
+/* validate a bare program.json structure (not a full backup) */
+function validateProgram(p) {
+  if (!p || typeof p !== 'object') return 'kein Objekt';
+  if (typeof p.name !== 'string' || !p.name) return 'name fehlt';
+  if (!(p.weeks >= 1)) return 'weeks ungültig';
+  if (!Array.isArray(p.days) || !p.days.length) return 'days fehlt';
+  for (const d of p.days) {
+    if (!d.id || !d.name) return 'Tag ohne id/name';
+    if (d.blocks && !Array.isArray(d.blocks)) return `blocks bei ${d.id} ungültig`;
+  }
+  return null;
+}
+
+async function importProgramFile(file) {
+  const text = await file.text();
+  let p;
+  try { p = JSON.parse(text); } catch (e) { toast('Keine gültige JSON-Datei'); return; }
+  // tolerate a full backup file: use its embedded program
+  if (p && p.app === 'workout-logger' && p.program) p = p.program;
+  const err = validateProgram(p);
+  if (err) { toast('Kein gültiges Programm: ' + err); return; }
+  if (!confirm(`Programm „${p.name}" (${p.weeks} Wochen) laden? Geloggte Daten, Maxes und Archiv bleiben erhalten.`)) return;
+  await dbPut('kv', { key: 'program', value: p });
+  App.program = p;
+  toast('Programm geladen ✓');
+  location.hash = '#/';
   render();
 }
 
@@ -1120,6 +1152,7 @@ function wireEvents() {
     if (e.target.id === 'export-csv') { exportCSV(); return; }
     if (e.target.id === 'import-json-btn') { $('#import-json-file').click(); return; }
     if (e.target.id === 'import-csv-btn') { $('#import-csv-file').click(); return; }
+    if (e.target.id === 'import-program-btn') { $('#import-program-file').click(); return; }
     if (e.target.id === 'reload-program') {
       if (!confirm('Reload program.json? Logged data is kept.')) return;
       try { await reloadProgramFromFile(); toast('Program reloaded ✓'); render(); }
@@ -1185,6 +1218,7 @@ function wireEvents() {
       return;
     }
     if (t.id === 'import-json-file' && t.files[0]) { importJSONFile(t.files[0]); t.value = ''; return; }
+    if (t.id === 'import-program-file' && t.files[0]) { importProgramFile(t.files[0]); t.value = ''; return; }
     if (t.id === 'import-csv-file' && t.files[0]) { importCSVFile(t.files[0]); t.value = ''; return; }
   });
 }
