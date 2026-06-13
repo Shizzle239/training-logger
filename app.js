@@ -769,12 +769,12 @@ async function renderData(app) {
     <div class="card">
       <h2>Program</h2>
       <p class="muted">Aktuell: <b>${esc(App.program.name)}</b> · ${App.program.weeks} Wochen.
-        Importiere eine <code>program.json</code> (z. B. von jemandem geteilt) oder lade die gehostete neu. Geloggte Daten bleiben erhalten.</p>
+        Importiere eine Programm-Vorlage (<code>.xlsx</code>) oder eine <code>program.json</code>, oder lade die gehostete neu. Geloggte Daten bleiben erhalten.</p>
       <div class="btn-row">
-        <button type="button" class="btn" id="import-program-btn">Programm importieren (JSON)…</button>
+        <button type="button" class="btn" id="import-program-btn">Programm importieren (Excel / JSON)…</button>
         <button type="button" class="btn" id="reload-program">Gehostetes neu laden</button>
       </div>
-      <input type="file" id="import-program-file" accept=".json,application/json" hidden>
+      <input type="file" id="import-program-file" accept=".xlsx,.json,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
     </div>
     <div class="card danger-card">
       <h2>Danger zone</h2>
@@ -868,11 +868,19 @@ function validateProgram(p) {
 }
 
 async function importProgramFile(file) {
-  const text = await file.text();
   let p;
-  try { p = JSON.parse(text); } catch (e) { toast('Keine gültige JSON-Datei'); return; }
-  // tolerate a full backup file: use its embedded program
-  if (p && p.app === 'workout-logger' && p.program) p = p.program;
+  const isXlsx = /\.xlsx$/i.test(file.name) || file.type.includes('spreadsheet');
+  if (isXlsx) {
+    if (typeof programFromXlsx !== 'function') { toast('Excel-Unterstützung nicht geladen'); return; }
+    try { p = await programFromXlsx(file); }
+    catch (e) { toast('Excel konnte nicht gelesen werden: ' + e.message); return; }
+  } else {
+    let text;
+    try { text = await file.text(); } catch (e) { toast('Datei nicht lesbar'); return; }
+    try { p = JSON.parse(text); } catch (e) { toast('Keine gültige JSON-Datei'); return; }
+    // tolerate a full backup file: use its embedded program
+    if (p && p.app === 'workout-logger' && p.program) p = p.program;
+  }
   const err = validateProgram(p);
   if (err) { toast('Kein gültiges Programm: ' + err); return; }
   if (!confirm(`Programm „${p.name}" (${p.weeks} Wochen) laden? Geloggte Daten, Maxes und Archiv bleiben erhalten.`)) return;

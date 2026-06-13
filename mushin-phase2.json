@@ -1,0 +1,350 @@
+{
+  "id": "mushin-p2",
+  "name": "Mushin – Phase 2: Hypertrophie",
+  "weeks": 3,
+  "days": [
+    {
+      "id": "tag1",
+      "name": "Tag 1",
+      "title": "Tag 1 — Squat",
+      "warmup": {
+        "title": "Warm-up · ~8 min",
+        "items": [
+          "Mobility: Hüfte, Sprunggelenk, BWS",
+          "Ramp-up Sätze bis Arbeitsgewicht"
+        ]
+      },
+      "plyo": {
+        "title": "Plyo / Core",
+        "items": [
+          {
+            "name": "Reverse Pogos",
+            "scheme": "20 reps · 30s · 2 Runden"
+          },
+          {
+            "name": "Pogo to Squat",
+            "scheme": "8 reps · 45s · 2 Runden"
+          }
+        ]
+      },
+      "blocks": [
+        {
+          "id": "A",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "back-squats",
+              "label": "1a",
+              "name": "Back Squats",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "box-jumps",
+              "label": "1b",
+              "name": "Box Jumps",
+              "target": {
+                "reps": "5",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        },
+        {
+          "id": "B",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "db-bench",
+              "label": "2a",
+              "name": "DB Bench",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "kneeling-push-up-explosive",
+              "label": "2b",
+              "name": "Kneeling Push up (Explosive)",
+              "target": {
+                "reps": "5",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        },
+        {
+          "id": "C",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "db-rows",
+              "label": "3a",
+              "name": "DB Rows",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "db-shoulder-press",
+              "label": "3b",
+              "name": "DB Shoulder Press",
+              "target": {
+                "reps": "15",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tag2",
+      "name": "Tag 2",
+      "title": "Tag 2 — Step-up",
+      "warmup": {
+        "title": "Warm-up · ~8 min",
+        "items": [
+          "Mobility: Hüfte, Knöchel, einbeinige Balance",
+          "Ramp-up Sätze bis Arbeitsgewicht"
+        ]
+      },
+      "plyo": {
+        "title": "Plyo / Core",
+        "items": [
+          {
+            "name": "Lateral Bounds",
+            "scheme": "6/side · 30s · 2 Runden"
+          },
+          {
+            "name": "Step-up Drive",
+            "scheme": "6/side · 45s · 2 Runden"
+          }
+        ]
+      },
+      "blocks": [
+        {
+          "id": "A",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "db-step-ups",
+              "label": "1a",
+              "name": "DB Step ups",
+              "target": {
+                "reps": "15/side",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "step-up-jumps",
+              "label": "1b",
+              "name": "Step-up Jumps",
+              "target": {
+                "reps": "3/side",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        },
+        {
+          "id": "B",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "bb-bench",
+              "label": "2a",
+              "name": "BB Bench",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "medicine-ball-pass",
+              "label": "2b",
+              "name": "Medicine Ball Pass",
+              "target": {
+                "reps": "5",
+                "rpe": 8,
+                "weight": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "C",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "db-shoulder-press",
+              "label": "3a",
+              "name": "DB Shoulder Press",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "reverse-rows",
+              "label": "3b",
+              "name": "Reverse Rows",
+              "target": {
+                "reps": "5",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tag3",
+      "name": "Tag 3",
+      "title": "Tag 3 — Bulgarian",
+      "warmup": {
+        "title": "Warm-up · ~8 min",
+        "items": [
+          "Mobility: Hüfte, Adduktoren, BWS",
+          "Ramp-up Sätze bis Arbeitsgewicht"
+        ]
+      },
+      "plyo": {
+        "title": "Plyo / Core",
+        "items": [
+          {
+            "name": "Split Squat Jumps",
+            "scheme": "5/side · 45s · 2 Runden"
+          },
+          {
+            "name": "Hollow Hold",
+            "scheme": "30s · 45s · 2 Runden"
+          }
+        ]
+      },
+      "blocks": [
+        {
+          "id": "A",
+          "type": "straight",
+          "exercises": [
+            {
+              "id": "bulgarian-split-squat",
+              "label": "1",
+              "name": "Bulgarian Split Squat",
+              "sets": [
+                {
+                  "reps": "15/side",
+                  "rpe": 6,
+                  "weight": null
+                },
+                {
+                  "reps": "15/side",
+                  "rpe": 6,
+                  "weight": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "B",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "inclined-db-bench-press",
+              "label": "2a",
+              "name": "Inclined DB Bench Press",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "pull-up",
+              "label": "2b",
+              "name": "Pull Up",
+              "target": {
+                "reps": "5",
+                "rpe": 8,
+                "weight": null
+              }
+            }
+          ]
+        },
+        {
+          "id": "C",
+          "type": "superset",
+          "rounds": 2,
+          "exercises": [
+            {
+              "id": "db-shoulder-press",
+              "label": "3a",
+              "name": "DB Shoulder Press",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            },
+            {
+              "id": "bb-hip-bridge",
+              "label": "3b",
+              "name": "BB Hip Bridge",
+              "target": {
+                "reps": "15",
+                "rpe": 6,
+                "weight": null
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "maxLifts": [
+    {
+      "id": "back-squat",
+      "name": "Back Squat"
+    },
+    {
+      "id": "db-bench",
+      "name": "DB Bench"
+    },
+    {
+      "id": "bulgarian-split-squat",
+      "name": "Bulgarian Split Squat"
+    }
+  ],
+  "progressLifts": [
+    "back-squats",
+    "db-bench",
+    "db-rows",
+    "db-step-ups",
+    "bb-bench",
+    "bulgarian-split-squat",
+    "inclined-db-bench-press"
+  ]
+}

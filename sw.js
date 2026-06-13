@@ -1,7 +1,7 @@
 /* sw.js — offline-first service worker. Bump VERSION on every deploy. */
 'use strict';
 
-const VERSION = 'v1.5.0';
+const VERSION = 'v1.6.0';
 const CACHE = `workout-logger-${VERSION}`;
 
 const ASSETS = [
@@ -9,6 +9,7 @@ const ASSETS = [
   './index.html',
   './styles.css',
   './db.js',
+  './xlsx.js',
   './app.js',
   './program.json',
   './manifest.json',

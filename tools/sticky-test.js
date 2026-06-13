@@ -19,7 +19,28 @@ function check(name, cond, extra) {
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--no-first-run'] });
   const page = await browser.newPage();
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
-  await page.goto('http://localhost:8123/#/log/1/upper', { waitUntil: 'networkidle0' });
+  // seed a known multi-superset day so the test is independent of the live program
+  await page.goto('http://localhost:8123/#/', { waitUntil: 'networkidle0' });
+  await page.waitForSelector('.week-card');
+  await page.evaluate(async () => {
+    const prog = { id: 'sticky-test', name: 'Sticky Test', weeks: 1, days: [{
+      id: 'upper', name: 'Upper', title: 'Day — Upper', blocks: [
+        { id: 'A', type: 'superset', rounds: 3, exercises: [
+          { id: 'a1', label: '1a', name: 'Ex A1', target: { reps: '10', rpe: 7, weight: 20 } },
+          { id: 'a2', label: '1b', name: 'Ex A2', target: { reps: '10', rpe: 7, weight: 20 } } ] },
+        { id: 'B', type: 'superset', rounds: 3, exercises: [
+          { id: 'b1', label: '2a', name: 'Ex B1', target: { reps: '12', rpe: 6, weight: 15 } },
+          { id: 'b2', label: '2b', name: 'Ex B2', target: { reps: '12', rpe: 6, weight: 15 } } ] },
+        { id: 'C', type: 'superset', rounds: 3, exercises: [
+          { id: 'c1', label: '3a', name: 'Ex C1', target: { reps: '15', rpe: 6, weight: 10 } },
+          { id: 'c2', label: '3b', name: 'Ex C2', target: { reps: '15', rpe: 6, weight: 10 } } ] } ] }],
+      maxLifts: [], progressLifts: [] };
+    await dbPut('kv', { key: 'program', value: prog });
+  });
+  // re-render home with the seeded program, then click into the day like a user
+  await page.evaluate(async () => { App.program = (await dbGet('kv', 'program')).value; await render(); });
+  await page.waitForSelector('.day-btn');
+  await page.$eval('.day-btn', el => el.click());
   await page.waitForSelector('.block-head');
 
   // at scroll 0: every header sits flush at the top of its block (no displacement)
