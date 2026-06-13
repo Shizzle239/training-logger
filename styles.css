@@ -218,6 +218,14 @@ button { font: inherit; color: inherit; }
   border-radius: 10px; min-height: 44px; padding: 0 8px; font-size: 15px; width: 100%; text-align: center;
 }
 
+.nav-row {
+  display: flex; align-items: center; justify-content: space-between;
+  text-decoration: none; color: var(--text); min-height: 52px;
+}
+.nav-row:active { background: var(--surface-2); }
+.nav-row-main { font-weight: 600; font-size: 16px; }
+.nav-row-meta { color: var(--muted); font-size: 14px; }
+
 .archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
 .archive-item:last-child { border-bottom: none; }
 .archive-item summary {

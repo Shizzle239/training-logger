@@ -23,6 +23,9 @@ const CHROME = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe
     ]);
   });
   await page.goto('http://localhost:8123/#/data', { waitUntil: 'networkidle0' });
+  await page.waitForSelector('.nav-row');
+  await page.screenshot({ path: process.argv[2] + '/shot-data.png' });
+  await page.goto('http://localhost:8123/#/archive', { waitUntil: 'networkidle0' });
   await page.waitForSelector('.archive-item');
   await page.evaluate(() => { document.querySelector('.archive-item').open = true; });
   await new Promise(r => setTimeout(r, 200));

@@ -139,12 +139,15 @@ function route() {
   if (parts[0] === 'maxes') return { view: 'maxes' };
   if (parts[0] === 'progress') return { view: 'progress' };
   if (parts[0] === 'data') return { view: 'data' };
+  if (parts[0] === 'archive') return { view: 'archive' };
   return { view: 'home' };
 }
 
 async function render() {
   const r = route();
-  $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === r.view));
+  // 'archive' lives under the Data tab — keep that tab highlighted
+  const navView = r.view === 'archive' ? 'data' : r.view;
+  $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   const app = $('#app');
   app.scrollTop = 0;
   window.scrollTo(0, 0);
@@ -153,6 +156,7 @@ async function render() {
     else if (r.view === 'maxes') await renderMaxes(app);
     else if (r.view === 'progress') await renderProgress(app);
     else if (r.view === 'data') await renderData(app);
+    else if (r.view === 'archive') await renderArchive(app);
     else await renderHome(app);
   } catch (e) {
     app.innerHTML = `<div class="card error">Something went wrong: ${esc(e.message)}</div>`;
@@ -689,7 +693,7 @@ function completedSessions(sets, sessions) {
   return out;
 }
 
-function archiveCardHtml(sets, sessions) {
+function archiveItemsHtml(sets, sessions) {
   const done = completedSessions(sets, sessions);
   let items = '';
   for (const { sess, doneCount } of done) {
@@ -710,9 +714,20 @@ function archiveCardHtml(sets, sessions) {
         ${sess.notes ? `<p class="hist-notes">${esc(sess.notes)}</p>` : ''}
       </details>`;
   }
-  return `<div class="card">
-      <h2>Archiv</h2>
-      <p class="muted hint">Vollständig abgeschlossene Trainings (alle Sätze ✓), neueste zuerst.</p>
+  return { items, count: done.length };
+}
+
+/* Full-page archive (own route #/archive, reached from the Data tab). */
+async function renderArchive(app) {
+  $('#topbar-title').textContent = 'Archiv';
+  $('#topbar-back').hidden = false;
+
+  const [sets, sessions] = await Promise.all([dbGetAll('sets'), dbGetAll('sessions')]);
+  const { items, count } = archiveItemsHtml(sets, sessions);
+
+  app.innerHTML = `
+    <p class="muted hint">${count} vollständig abgeschlossene Trainings (alle Sätze ✓), neueste zuerst. Antippen für Details.</p>
+    <div class="card">
       ${items || '<p class="muted">Noch keine abgeschlossenen Trainings.</p>'}
     </div>`;
 }
@@ -726,9 +741,13 @@ async function renderData(app) {
   ]);
   const last = parseInt(localStorage.getItem('wl.lastExport') || '0', 10);
   const lastTxt = last ? new Date(last).toLocaleString() : 'never';
+  const archiveCount = completedSessions(sets, sessions).length;
 
   app.innerHTML = `
-    ${archiveCardHtml(sets, sessions)}
+    <a class="card nav-row" href="#/archive">
+      <span class="nav-row-main">🏆 Archiv</span>
+      <span class="nav-row-meta">${archiveCount} Trainings ›</span>
+    </a>
     <div class="card">
       <h2>Backup</h2>
       <p class="muted">Logged sets: ${sets.length} · sessions: ${sessions.length} · maxes: ${maxes.length} · bodyweight entries: ${bw.length}<br>Last export: ${esc(lastTxt)}</p>

@@ -41,11 +41,20 @@ const check = (n, c, x) => { console.log(`  ${c ? 'PASS' : 'FAIL'}  ${n}${!c && 
     ]);
   });
 
+  // Data tab: archive is a clickable nav row showing the count, not the full list
   await page.goto('http://localhost:8123/#/data', { waitUntil: 'networkidle0' });
-  await page.waitForSelector('.archive-item, .card');
+  await page.waitForSelector('.nav-row');
+  const navRow = await page.$eval('.nav-row', a => ({ href: a.getAttribute('href'), text: a.textContent.replace(/\s+/g, ' ').trim() }));
+  check('Data tab shows clickable Archiv row with count', navRow.href === '#/archive' && navRow.text.includes('Archiv') && navRow.text.includes('2 Trainings'), JSON.stringify(navRow));
+  check('Data tab does NOT inline the archive list', (await page.$$('.archive-item')).length === 0);
 
-  const archiveFirst = await page.$eval('#app .card h2', h => h.textContent);
-  check('Archiv is the top section', archiveFirst === 'Archiv', archiveFirst);
+  // navigate to the dedicated archive page
+  await page.click('.nav-row');
+  await page.waitForSelector('.archive-item');
+  const archTitle = await page.$eval('#topbar-title', e => e.textContent);
+  const backShown = await page.$eval('#topbar-back', e => !e.hidden);
+  check('archive page: own route, title + back arrow', archTitle === 'Archiv' && backShown, `${archTitle} back=${backShown}`);
+  check('Data tab stays highlighted in bottom nav', await page.$eval('#bottomnav a[data-view="data"]', a => a.classList.contains('active')));
 
   const items = await page.$$eval('.archive-item summary', els => els.map(s => ({
     name: s.querySelector('.arc-name').textContent.trim(),
