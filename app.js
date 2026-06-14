@@ -113,12 +113,51 @@ async function loadProgram() {
   const stored = await dbGet('kv', 'program');
   if (stored && stored.value && stored.value.days) {
     App.program = stored.value;
+    harvestExercises(App.program);
     return;
   }
   const res = await fetch('program.json');
   if (!res.ok) throw new Error('program.json not found');
   App.program = await res.json();
   await dbPut('kv', { key: 'program', value: App.program });
+  harvestExercises(App.program);
+}
+
+/* Collect every exercise from a program into the persistent library store.
+   Merges by id; keeps a list of programs that use it + latest target values.
+   Fire-and-forget (doesn't block rendering). */
+async function harvestExercises(program) {
+  if (!program || !Array.isArray(program.days)) return;
+  try {
+    const existing = new Map((await dbGetAll('exercises')).map(e => [e.id, e]));
+    const now = Date.now();
+    const progLabel = program.name || program.id || 'Programm';
+    const seen = new Set();
+    const records = [];
+    for (const day of program.days) {
+      for (const block of (day.blocks || [])) {
+        for (const ex of (block.exercises || [])) {
+          if (!ex.id || seen.has(ex.id)) continue;
+          seen.add(ex.id);
+          const t = ex.target || (ex.sets && ex.sets[0]) || {};
+          const prev = existing.get(ex.id);
+          const programs = new Set(prev && prev.programs || []);
+          programs.add(progLabel);
+          records.push({
+            id: ex.id,
+            name: ex.name || ex.id,
+            lastReps: t.reps != null ? t.reps : (prev && prev.lastReps) || null,
+            lastRpe: t.rpe != null ? t.rpe : (prev && prev.lastRpe) || null,
+            lastWeight: t.weight != null ? t.weight : (prev && prev.lastWeight) || null,
+            programs: Array.from(programs),
+            firstSeen: prev && prev.firstSeen || now,
+            lastSeen: now,
+          });
+        }
+      }
+    }
+    if (records.length) await dbBulkPut('exercises', records);
+  } catch (e) { console.warn('harvestExercises failed', e); }
 }
 
 async function reloadProgramFromFile() {
@@ -126,6 +165,7 @@ async function reloadProgramFromFile() {
   if (!res.ok) throw new Error('fetch failed');
   App.program = await res.json();
   await dbPut('kv', { key: 'program', value: App.program });
+  harvestExercises(App.program);
 }
 
 /* ------------------------------------------------------------- routing */
@@ -140,13 +180,14 @@ function route() {
   if (parts[0] === 'progress') return { view: 'progress' };
   if (parts[0] === 'data') return { view: 'data' };
   if (parts[0] === 'archive') return { view: 'archive' };
+  if (parts[0] === 'exercises') return { view: 'exercises' };
   return { view: 'home' };
 }
 
 async function render() {
   const r = route();
-  // 'archive' lives under the Data tab — keep that tab highlighted
-  const navView = r.view === 'archive' ? 'data' : r.view;
+  // 'archive' and 'exercises' live under the Data tab — keep that tab highlighted
+  const navView = (r.view === 'archive' || r.view === 'exercises') ? 'data' : r.view;
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   const app = $('#app');
   app.scrollTop = 0;
@@ -157,6 +198,7 @@ async function render() {
     else if (r.view === 'progress') await renderProgress(app);
     else if (r.view === 'data') await renderData(app);
     else if (r.view === 'archive') await renderArchive(app);
+    else if (r.view === 'exercises') await renderExercises(app);
     else await renderHome(app);
   } catch (e) {
     app.innerHTML = `<div class="card error">Something went wrong: ${esc(e.message)}</div>`;
@@ -732,6 +774,43 @@ async function renderArchive(app) {
     </div>`;
 }
 
+/* Exercise library — every exercise ever introduced via an imported program.
+   Read-only for now; future basis for an in-app session builder. */
+async function renderExercises(app) {
+  $('#topbar-title').textContent = 'Exercises';
+  $('#topbar-back').hidden = false;
+
+  const list = (await dbGetAll('exercises'))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  let items = '';
+  for (const ex of list) {
+    const bits = [];
+    if (ex.lastReps != null) bits.push(`${esc(ex.lastReps)} reps`);
+    if (ex.lastRpe != null) bits.push(`RPE ${esc(ex.lastRpe)}`);
+    if (ex.lastWeight != null) bits.push(`${fmtNum(ex.lastWeight)} kg`);
+    const target = bits.length ? bits.join(' · ') : 'kein Zielwert';
+    const progs = (ex.programs || []).map(esc).join(', ');
+    items += `<details class="exlib-item">
+        <summary>
+          <span class="exlib-name">${esc(ex.name)}</span>
+          <span class="exlib-target">${target}</span>
+        </summary>
+        <div class="exlib-detail">
+          <div>Zuletzt: ${target}</div>
+          <div class="muted">Aus Programm: ${progs || '—'}</div>
+        </div>
+      </details>`;
+  }
+
+  app.innerHTML = `
+    <p class="muted hint">${list.length} Übungen, gesammelt aus allen importierten Programmen.
+      Basis für den späteren Session-Builder.</p>
+    <div class="card">
+      ${items || '<p class="muted">Noch keine Übungen. Importiere ein Programm (Data → Programm importieren).</p>'}
+    </div>`;
+}
+
 async function renderData(app) {
   $('#topbar-title').textContent = 'Data';
   $('#topbar-back').hidden = false;
@@ -742,11 +821,16 @@ async function renderData(app) {
   const last = parseInt(localStorage.getItem('wl.lastExport') || '0', 10);
   const lastTxt = last ? new Date(last).toLocaleString() : 'never';
   const archiveCount = completedSessions(sets, sessions).length;
+  const exCount = (await dbGetAll('exercises')).length;
 
   app.innerHTML = `
     <a class="card nav-row" href="#/archive">
       <span class="nav-row-main">🏆 Archiv</span>
       <span class="nav-row-meta">${archiveCount} Trainings ›</span>
+    </a>
+    <a class="card nav-row" href="#/exercises">
+      <span class="nav-row-main">🏋️ Exercises</span>
+      <span class="nav-row-meta">${exCount} Übungen ›</span>
     </a>
     <div class="card">
       <h2>Backup</h2>
@@ -850,6 +934,7 @@ async function importJSONFile(file) {
   if (data.maxes && data.maxes.length) await dbBulkPut('maxes', data.maxes);
   if (data.bodyweight && data.bodyweight.length) await dbBulkPut('bodyweight', data.bodyweight);
   if (data.program) App.program = data.program;
+  if (data.program) await harvestExercises(data.program);
   toast('Backup restored ✓');
   render();
 }
@@ -886,6 +971,7 @@ async function importProgramFile(file) {
   if (!confirm(`Programm „${p.name}" (${p.weeks} Wochen) laden? Geloggte Daten, Maxes und Archiv bleiben erhalten.`)) return;
   await dbPut('kv', { key: 'program', value: p });
   App.program = p;
+  await harvestExercises(p);
   toast('Programm geladen ✓');
   location.hash = '#/';
   render();

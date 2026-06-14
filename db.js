@@ -5,12 +5,14 @@
      sets       { id, week, day, ex, set, reps, wt, rpe, done, ts }  id = `${week}|${dayId}|${exId}|${setIdx}`
      maxes      { id, oneRM }         id = lift id
      bodyweight { week, kg }
+     exercises  { id, name, lastReps, lastRpe, lastWeight, programs[], firstSeen, lastSeen }
+                — library of every exercise ever introduced via an imported program
 */
 'use strict';
 
 const DB_NAME = 'workout-logger';
-const DB_VERSION = 1;
-const STORES = ['kv', 'sessions', 'sets', 'maxes', 'bodyweight'];
+const DB_VERSION = 2;
+const STORES = ['kv', 'sessions', 'sets', 'maxes', 'bodyweight', 'exercises'];
 
 let _dbPromise = null;
 
@@ -25,6 +27,7 @@ function openDB() {
       if (!db.objectStoreNames.contains('sets')) db.createObjectStore('sets', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('maxes')) db.createObjectStore('maxes', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('bodyweight')) db.createObjectStore('bodyweight', { keyPath: 'week' });
+      if (!db.objectStoreNames.contains('exercises')) db.createObjectStore('exercises', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
