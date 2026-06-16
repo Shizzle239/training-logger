@@ -56,8 +56,8 @@ async function typeIn(page, sel, text) {
     JSON.stringify(order) === JSON.stringify([
       'back-squat#0', 'db-jumps#0', 'back-squat#1', 'db-jumps#1', 'back-squat#2', 'db-jumps#2']),
     order.join(','));
-  const dividers = await page.$$eval('.block', blocks => blocks[1].querySelectorAll('.round-divider').length);
-  check('round dividers between rounds', dividers === 2, `got ${dividers}`);
+  const groups = await page.$$eval('.block', blocks => blocks[1].querySelectorAll('.round-group').length);
+  check('round groups (one per round)', groups === 3, `got ${groups}`);
 
   /* ---- done toggle: smart defaults + status color ---- */
   const bsRow = '.set-row[data-key="1|lower|back-squat|0"]';
