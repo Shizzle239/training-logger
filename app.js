@@ -305,11 +305,12 @@ async function renderLog(app, week, dayId) {
     if (block.type === 'superset') {
       const rounds = block.rounds || 3;
       for (let r = 0; r < rounds; r++) {
-        if (r > 0) rowsHtml += `<div class="round-divider"><span>Round ${r + 1} / ${rounds}</span></div>`;
+        let groupRows = '';
         for (const ex of block.exercises) {
           const t = exerciseSets(ex, block)[r];
-          rowsHtml += setRowHtml(week, dayId, ex, r, t);
+          groupRows += setRowHtml(week, dayId, ex, r, t);
         }
+        rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
       }
     } else {
       const ex = block.exercises[0];
@@ -1328,10 +1329,4 @@ async function init() {
   } catch (e) {
     $('#app').innerHTML = `<div class="card error">Could not load the program (program.json).
       Serve the app over http(s) — see README.</div>`;
-    return;
-  }
-  wireEvents();
-  render();
-}
-
-init();
+    retur
