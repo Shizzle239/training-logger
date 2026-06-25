@@ -273,7 +273,7 @@ button { font: inherit; color: inherit; }
 .theme-swatch .theme-check { margin-left: auto; color: var(--sw); font-weight: 800; }
 .btn.small { font-size: 12.5px; padding: 6px 10px; }
 .btn.accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-.btn.block { display: block; width: 100%; text-align: center; margin: 8px 0 14px; }
+.btn.block { display: flex; width: 100%; margin: 8px 0 14px; }
 .plan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .plan-name { font-weight: 600; font-size: 15px; }
 .plan-active { background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; flex: none; }
@@ -312,6 +312,7 @@ button { font: inherit; color: inherit; }
 /* ---------- data ---------- */
 .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
 .btn {
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
   min-height: var(--row-h); padding: 0 16px; cursor: pointer; font-size: 15px; font-weight: 600;
 }
