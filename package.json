@@ -1,0 +1,16 @@
+{
+  "name": "training-logger",
+  "version": "1.7.5",
+  "private": true,
+  "description": "Offline-first PWA workout logger (vanilla JS, IndexedDB, TWA). Dev tooling: preflight test gate.",
+  "scripts": {
+    "preflight": "node tools/preflight.js",
+    "test": "node tools/preflight.js",
+    "smoke": "node tools/smoke-boot.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "fake-indexeddb": "^6.2.5",
+    "puppeteer-core": "^25.1.0"
+  }
+}
