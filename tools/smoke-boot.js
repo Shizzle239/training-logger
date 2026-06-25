@@ -112,6 +112,10 @@ const check = (name, cond, extra) => {
   window.dispatchEvent(new window.Event('hashchange'));
   check('Settings view renders (theme swatches)', await waitFor('.theme-swatch'));
 
+  window.location.hash = '#/plans';
+  window.dispatchEvent(new window.Event('hashchange'));
+  check('Plans view renders', await waitFor('a[href="#/plans/new"]'));
+
   await sleep(200);
   check('zero console/runtime errors during boot + navigation', errors.length === 0,
     errors.slice(0, 5).join(' | '));

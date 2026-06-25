@@ -11,8 +11,8 @@
 'use strict';
 
 const DB_NAME = 'workout-logger';
-const DB_VERSION = 2;
-const STORES = ['kv', 'sessions', 'sets', 'maxes', 'bodyweight', 'exercises'];
+const DB_VERSION = 3;
+const STORES = ['kv', 'sessions', 'sets', 'maxes', 'bodyweight', 'exercises', 'plans'];
 
 let _dbPromise = null;
 
@@ -28,6 +28,7 @@ function openDB() {
       if (!db.objectStoreNames.contains('maxes')) db.createObjectStore('maxes', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('bodyweight')) db.createObjectStore('bodyweight', { keyPath: 'week' });
       if (!db.objectStoreNames.contains('exercises')) db.createObjectStore('exercises', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('plans')) db.createObjectStore('plans', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

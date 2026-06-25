@@ -214,13 +214,17 @@ function route() {
   if (parts[0] === 'archive') return { view: 'archive' };
   if (parts[0] === 'exercises') return { view: 'exercises' };
   if (parts[0] === 'settings') return { view: 'settings' };
+  if (parts[0] === 'plans' && parts[1] === 'new') return { view: 'planSetup', id: null };
+  if (parts[0] === 'plans' && parts[1] === 'edit' && parts[2]) return { view: 'planSetup', id: parts[2] };
+  if (parts[0] === 'plans') return { view: 'plans' };
   return { view: 'home' };
 }
 
 async function render() {
   const r = route();
   // 'archive', 'exercises' and 'settings' live under the Data tab — keep that tab highlighted
-  const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data' : r.view;
+  const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data'
+    : (r.view === 'planSetup' ? 'plans' : r.view);
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   const app = $('#app');
   app.scrollTop = 0;
@@ -233,6 +237,8 @@ async function render() {
     else if (r.view === 'archive') await renderArchive(app);
     else if (r.view === 'exercises') await renderExercises(app);
     else if (r.view === 'settings') await renderSettings(app);
+    else if (r.view === 'plans') await renderPlans(app);
+    else if (r.view === 'planSetup') await renderPlanSetup(app, r.id);
     else await renderHome(app);
   } catch (e) {
     app.innerHTML = `<div class="card error">Something went wrong: ${esc(e.message)}</div>`;
@@ -965,6 +971,198 @@ async function renderExercises(app) {
     ${progHtml}`;
 }
 
+/* -------------------------------------------------------------- plans */
+
+function genId(prefix) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function planSlug(name) {
+  return String(name || 'plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'plan';
+}
+
+function blankDay(n) {
+  return {
+    id: `day-${n}`, name: `Tag ${n}`, title: `Tag ${n}`,
+    warmup: { title: 'Warmup & Mobility', items: [] },
+    plyo: { title: 'Plyometrics & Priming', items: [] },
+    blocks: [],
+  };
+}
+
+function blankPlan(name) {
+  const now = Date.now();
+  const nm = name || 'Neuer Plan';
+  return {
+    id: genId('plan'), name: nm, createdAt: now, updatedAt: now,
+    program: { id: genId('prog'), name: nm, weeks: 1, maxLifts: [], progressLifts: [], days: [blankDay(1)] },
+  };
+}
+
+async function getPlans() {
+  return (await dbGetAll('plans')).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+async function activePlanId() {
+  const rec = await dbGet('kv', 'activePlanId');
+  return rec ? rec.value : null;
+}
+
+/* seed the library with the active program the first time the feature runs */
+async function seedPlansIfEmpty() {
+  if ((await dbGetAll('plans')).length || !App.program) return;
+  const now = Date.now();
+  const plan = { id: genId('plan'), name: App.program.name || 'Programm', createdAt: now, updatedAt: now, program: App.program };
+  await dbPut('plans', plan);
+  await dbPut('kv', { key: 'activePlanId', value: plan.id });
+}
+
+async function activatePlan(plan) {
+  await dbPut('kv', { key: 'program', value: plan.program });
+  await dbPut('kv', { key: 'activePlanId', value: plan.id });
+  App.program = plan.program;
+  await harvestExercises(plan.program);
+  toast(`„${plan.name}" aktiviert ✓`);
+  location.hash = '#/';
+}
+
+async function duplicatePlan(plan) {
+  const now = Date.now();
+  const copy = {
+    id: genId('plan'), name: plan.name + ' (Kopie)', createdAt: now, updatedAt: now,
+    program: JSON.parse(JSON.stringify(plan.program)),
+  };
+  copy.program.id = genId('prog');
+  await dbPut('plans', copy);
+}
+
+function exportPlan(plan) {
+  download(`${planSlug(plan.name)}.json`, JSON.stringify(plan.program, null, 2), 'application/json');
+  toast('Plan als .json exportiert ✓');
+}
+
+async function renderPlans(app) {
+  $('#topbar-title').textContent = 'Plans';
+  $('#topbar-back').hidden = true;
+  App.editPlan = null;
+  const [plans, activeId] = await Promise.all([getPlans(), activePlanId()]);
+
+  let cards = '';
+  for (const plan of plans) {
+    const p = plan.program || {};
+    const dc = (p.days || []).length;
+    const active = plan.id === activeId;
+    cards += `<div class="card plan-card" data-id="${esc(plan.id)}">
+        <div class="plan-head">
+          <span class="plan-name">${esc(plan.name)}</span>
+          ${active ? '<span class="plan-active">Aktiv</span>' : ''}
+        </div>
+        <div class="plan-meta">${p.weeks || 1} Wochen · ${dc} ${dc === 1 ? 'Tag' : 'Tage'}</div>
+        <div class="plan-actions">
+          ${active ? '' : '<button type="button" class="btn small plan-activate">Aktivieren</button>'}
+          <button type="button" class="btn small plan-edit">Bearbeiten</button>
+          <button type="button" class="btn small plan-dup">Duplizieren</button>
+          <button type="button" class="btn small plan-export">.json</button>
+          <button type="button" class="btn small danger plan-del">Löschen</button>
+        </div>
+      </div>`;
+  }
+
+  app.innerHTML = `
+    <p class="muted hint">Baue, benenne und aktiviere deine Trainingspläne — genau ein Plan ist aktiv.</p>
+    <a class="btn accent block" href="#/plans/new">+ Neuer Plan</a>
+    ${cards || '<div class="card"><p class="muted">Noch keine Pläne. Erstelle einen oder importiere (Data → importieren).</p></div>'}`;
+
+  const byId = new Map(plans.map(p => [p.id, p]));
+  $$('.plan-card').forEach(card => {
+    const plan = byId.get(card.dataset.id);
+    const q = s => card.querySelector(s);
+    const a = q('.plan-activate'); if (a) a.addEventListener('click', () => activatePlan(plan));
+    q('.plan-edit').addEventListener('click', () => { location.hash = `#/plans/edit/${plan.id}`; });
+    q('.plan-dup').addEventListener('click', async () => { await duplicatePlan(plan); toast('Dupliziert ✓'); render(); });
+    q('.plan-export').addEventListener('click', () => exportPlan(plan));
+    q('.plan-del').addEventListener('click', async () => {
+      if (!confirm(`Plan „${plan.name}" löschen?`)) return;
+      await dbDelete('plans', plan.id); toast('Gelöscht'); render();
+    });
+  });
+}
+
+async function renderPlanSetup(app, id) {
+  const key = id || '__new__';
+  if (!App.editPlan || App.editPlan._key !== key) {
+    const loaded = id ? await dbGet('plans', id) : blankPlan('');
+    if (id && !loaded) { location.hash = '#/plans'; return; }
+    loaded._key = key;
+    App.editPlan = loaded;
+  }
+  const plan = App.editPlan;
+  const p = plan.program;
+  $('#topbar-title').textContent = id ? 'Plan bearbeiten' : 'Neuer Plan';
+  $('#topbar-back').hidden = false;
+
+  const dayRows = (p.days || []).map((d, i) =>
+    `<label class="setup-day">Tag ${i + 1}
+       <input type="text" class="f-dayname" data-i="${i}" value="${esc(d.name || '')}" placeholder="z.B. Lower / Upper / Push">
+     </label>`).join('');
+
+  app.innerHTML = `
+    <div class="card">
+      <label class="setup-label">Name
+        <input type="text" id="plan-name" value="${esc(plan.name || '')}" placeholder="z.B. Hypertrophy Block">
+      </label>
+      <div class="setup-row">
+        <span>Wochen</span>
+        <div class="setup-stepper">
+          <button type="button" class="step2" data-f="weeks" data-d="-1" aria-label="minus">−</button>
+          <span id="plan-weeks">${p.weeks || 1}</span>
+          <button type="button" class="step2" data-f="weeks" data-d="1" aria-label="plus">+</button>
+        </div>
+      </div>
+      <div class="setup-row">
+        <span>Trainingstage</span>
+        <div class="setup-stepper">
+          <button type="button" class="step2" data-f="days" data-d="-1" aria-label="minus">−</button>
+          <span id="plan-days">${(p.days || []).length}</span>
+          <button type="button" class="step2" data-f="days" data-d="1" aria-label="plus">+</button>
+        </div>
+      </div>
+      <div class="setup-days">${dayRows}</div>
+      <p class="muted hint">Übungen je Tag (Warmup · Plyo · Main) kommen im nächsten Schritt.</p>
+      <div class="btn-row">
+        <button type="button" class="btn accent" id="plan-save">Speichern</button>
+        <a class="btn" href="#/plans">Abbrechen</a>
+      </div>
+    </div>`;
+
+  const nameI = $('#plan-name');
+  nameI.addEventListener('input', () => { plan.name = nameI.value; p.name = nameI.value; });
+  $$('.f-dayname').forEach(inp => inp.addEventListener('input', () => {
+    const d = p.days[Number(inp.dataset.i)];
+    if (d) { d.name = inp.value; d.title = inp.value; }
+  }));
+  $$('.step2').forEach(b => b.addEventListener('click', () => {
+    const f = b.dataset.f, d = Number(b.dataset.d);
+    if (f === 'weeks') p.weeks = Math.max(1, Math.min(20, (p.weeks || 1) + d));
+    else {
+      const cur = p.days.length, next = Math.max(1, Math.min(7, cur + d));
+      if (next > cur) for (let n = cur + 1; n <= next; n++) p.days.push(blankDay(n));
+      else if (next < cur) p.days.length = next;
+    }
+    renderPlanSetup(app, id);
+  }));
+  $('#plan-save').addEventListener('click', async () => {
+    if (!plan.name || !plan.name.trim()) { toast('Bitte Name eingeben'); return; }
+    plan.updatedAt = Date.now();
+    const out = { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p };
+    await dbPut('plans', out);
+    if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; }
+    App.editPlan = null;
+    toast('Gespeichert ✓');
+    location.hash = '#/plans';
+  });
+}
+
 /* ------------------------------------------------------------ settings */
 
 async function renderSettings(app) {
@@ -1512,6 +1710,7 @@ async function init() {
       Serve the app over http(s) — see README.</div>`;
     return;
   }
+  try { await seedPlansIfEmpty(); } catch (e) { console.warn('seed plans failed', e); }
   wireEvents();
   render();
 }
