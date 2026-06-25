@@ -257,6 +257,11 @@ button { font: inherit; color: inherit; }
 .exlib-target { color: var(--muted); font-size: 13px; text-align: right; }
 .exlib-detail { padding: 4px 2px 8px; font-size: 13.5px; }
 .exlib-detail .muted { margin-top: 2px; }
+.exlib-group h2 { display: flex; align-items: center; gap: 8px; }
+.exlib-count { color: var(--muted); font-size: 13px; font-weight: 400; }
+.exlib-row { min-height: 40px; display: flex; align-items: center; padding: 4px 2px;
+  border-bottom: 1px solid rgba(42, 47, 58, 0.6); }
+.exlib-row:last-child { border-bottom: none; }
 
 .archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
 .archive-item:last-child { border-bottom: none; }

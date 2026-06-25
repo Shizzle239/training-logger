@@ -775,41 +775,128 @@ async function renderArchive(app) {
     </div>`;
 }
 
-/* Exercise library — every exercise ever introduced via an imported program.
-   Read-only for now; future basis for an in-app session builder. */
+/* Built-in exercise catalog — common lifts grouped by equipment. Static reference
+   shown in the Exercises tab; sits alongside exercises harvested from imported programs.
+   Ids are namespaced "cat-*" so they never collide with program exercise ids. */
+const EXERCISE_CATALOG = [
+  // Barbell
+  { id: 'cat-bb-back-squat', name: 'Back Squat', equipment: 'Barbell' },
+  { id: 'cat-bb-front-squat', name: 'Front Squat', equipment: 'Barbell' },
+  { id: 'cat-bb-bench-press', name: 'Bench Press', equipment: 'Barbell' },
+  { id: 'cat-bb-incline-bench', name: 'Incline Bench Press', equipment: 'Barbell' },
+  { id: 'cat-bb-ohp', name: 'Overhead Press', equipment: 'Barbell' },
+  { id: 'cat-bb-push-press', name: 'Push Press', equipment: 'Barbell' },
+  { id: 'cat-bb-deadlift', name: 'Deadlift', equipment: 'Barbell' },
+  { id: 'cat-bb-rdl', name: 'Romanian Deadlift', equipment: 'Barbell' },
+  { id: 'cat-bb-row', name: 'Bent-Over Row', equipment: 'Barbell' },
+  { id: 'cat-bb-pendlay-row', name: 'Pendlay Row', equipment: 'Barbell' },
+  { id: 'cat-bb-hip-thrust', name: 'Hip Thrust', equipment: 'Barbell' },
+  { id: 'cat-bb-good-morning', name: 'Good Morning', equipment: 'Barbell' },
+  { id: 'cat-bb-lunge', name: 'Barbell Lunge', equipment: 'Barbell' },
+  { id: 'cat-bb-power-clean', name: 'Power Clean', equipment: 'Barbell' },
+  { id: 'cat-bb-curl', name: 'Barbell Curl', equipment: 'Barbell' },
+  // Dumbbell
+  { id: 'cat-db-bench', name: 'DB Bench Press', equipment: 'Dumbbell' },
+  { id: 'cat-db-incline', name: 'DB Incline Press', equipment: 'Dumbbell' },
+  { id: 'cat-db-shoulder-press', name: 'DB Shoulder Press', equipment: 'Dumbbell' },
+  { id: 'cat-db-row', name: 'One-Arm DB Row', equipment: 'Dumbbell' },
+  { id: 'cat-db-rdl', name: 'DB Romanian Deadlift', equipment: 'Dumbbell' },
+  { id: 'cat-db-bulgarian', name: 'DB Bulgarian Split Squat', equipment: 'Dumbbell' },
+  { id: 'cat-db-walking-lunge', name: 'DB Walking Lunge', equipment: 'Dumbbell' },
+  { id: 'cat-db-step-up', name: 'DB Step-Up', equipment: 'Dumbbell' },
+  { id: 'cat-db-lateral-raise', name: 'DB Lateral Raise', equipment: 'Dumbbell' },
+  { id: 'cat-db-rear-fly', name: 'DB Rear-Delt Fly', equipment: 'Dumbbell' },
+  { id: 'cat-db-curl', name: 'DB Curl', equipment: 'Dumbbell' },
+  { id: 'cat-db-hammer-curl', name: 'DB Hammer Curl', equipment: 'Dumbbell' },
+  { id: 'cat-db-triceps-ext', name: 'DB Triceps Extension', equipment: 'Dumbbell' },
+  { id: 'cat-db-floor-press', name: 'DB Floor Press', equipment: 'Dumbbell' },
+  { id: 'cat-db-pullover', name: 'DB Pullover', equipment: 'Dumbbell' },
+  // Kettlebell
+  { id: 'cat-kb-swing', name: 'KB Swing', equipment: 'Kettlebell' },
+  { id: 'cat-kb-goblet-squat', name: 'Goblet Squat', equipment: 'Kettlebell' },
+  { id: 'cat-kb-clean', name: 'KB Clean', equipment: 'Kettlebell' },
+  { id: 'cat-kb-clean-press', name: 'KB Clean & Press', equipment: 'Kettlebell' },
+  { id: 'cat-kb-press', name: 'KB Strict Press', equipment: 'Kettlebell' },
+  { id: 'cat-kb-snatch', name: 'KB Snatch', equipment: 'Kettlebell' },
+  { id: 'cat-kb-tgu', name: 'Turkish Get-Up', equipment: 'Kettlebell' },
+  { id: 'cat-kb-rdl', name: 'KB Romanian Deadlift', equipment: 'Kettlebell' },
+  { id: 'cat-kb-row', name: 'KB Row', equipment: 'Kettlebell' },
+  { id: 'cat-kb-front-rack-carry', name: 'KB Front-Rack Carry', equipment: 'Kettlebell' },
+  { id: 'cat-kb-suitcase-carry', name: 'KB Suitcase Carry', equipment: 'Kettlebell' },
+  { id: 'cat-kb-reverse-lunge', name: 'KB Reverse Lunge', equipment: 'Kettlebell' },
+  { id: 'cat-kb-halo', name: 'KB Halo', equipment: 'Kettlebell' },
+  { id: 'cat-kb-windmill', name: 'KB Windmill', equipment: 'Kettlebell' },
+  // Trap-bar
+  { id: 'cat-tb-deadlift', name: 'Trap-Bar Deadlift', equipment: 'Trap-bar' },
+  { id: 'cat-tb-rdl', name: 'Trap-Bar Romanian Deadlift', equipment: 'Trap-bar' },
+  { id: 'cat-tb-shrug', name: 'Trap-Bar Shrug', equipment: 'Trap-bar' },
+  { id: 'cat-tb-farmers-carry', name: "Trap-Bar Farmer's Carry", equipment: 'Trap-bar' },
+  { id: 'cat-tb-jump', name: 'Trap-Bar Jump', equipment: 'Trap-bar' },
+  { id: 'cat-tb-row', name: 'Trap-Bar Bent-Over Row', equipment: 'Trap-bar' },
+  { id: 'cat-tb-lunge', name: 'Trap-Bar Lunge', equipment: 'Trap-bar' },
+  { id: 'cat-tb-calf-raise', name: 'Trap-Bar Calf Raise', equipment: 'Trap-bar' },
+  { id: 'cat-tb-ohp', name: 'Trap-Bar Overhead Press', equipment: 'Trap-bar' },
+];
+
+const EQUIPMENT_GROUPS = [
+  { key: 'Barbell', icon: '🏋️' },
+  { key: 'Dumbbell', icon: '💪' },
+  { key: 'Kettlebell', icon: '🔔' },
+  { key: 'Trap-bar', icon: '🔷' },
+];
+
+/* Exercise library — built-in catalog grouped by equipment, plus every exercise
+   harvested from imported programs. Read-only; future basis for a session builder. */
 async function renderExercises(app) {
   $('#topbar-title').textContent = 'Exercises';
   $('#topbar-back').hidden = false;
 
-  const list = (await dbGetAll('exercises'))
+  const harvested = (await dbGetAll('exercises'))
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-  let items = '';
-  for (const ex of list) {
-    const bits = [];
-    if (ex.lastReps != null) bits.push(`${esc(ex.lastReps)} reps`);
-    if (ex.lastRpe != null) bits.push(`RPE ${esc(ex.lastRpe)}`);
-    if (ex.lastWeight != null) bits.push(`${fmtNum(ex.lastWeight)} kg`);
-    const target = bits.length ? bits.join(' · ') : 'kein Zielwert';
-    const progs = (ex.programs || []).map(esc).join(', ');
-    items += `<details class="exlib-item">
-        <summary>
-          <span class="exlib-name">${esc(ex.name)}</span>
-          <span class="exlib-target">${target}</span>
-        </summary>
-        <div class="exlib-detail">
-          <div>Zuletzt: ${target}</div>
-          <div class="muted">Aus Programm: ${progs || '—'}</div>
-        </div>
-      </details>`;
+  let catHtml = '';
+  for (const g of EQUIPMENT_GROUPS) {
+    const ex = EXERCISE_CATALOG.filter(e => e.equipment === g.key);
+    if (!ex.length) continue;
+    const rows = ex.map(e =>
+      `<div class="exlib-row"><span class="exlib-name">${esc(e.name)}</span></div>`).join('');
+    catHtml += `<div class="card exlib-group">
+        <h2>${g.icon} ${esc(g.key)} <span class="exlib-count">${ex.length}</span></h2>
+        ${rows}
+      </div>`;
+  }
+
+  let progHtml = '';
+  if (harvested.length) {
+    let items = '';
+    for (const ex of harvested) {
+      const bits = [];
+      if (ex.lastReps != null) bits.push(`${esc(ex.lastReps)} reps`);
+      if (ex.lastRpe != null) bits.push(`RPE ${esc(ex.lastRpe)}`);
+      if (ex.lastWeight != null) bits.push(`${fmtNum(ex.lastWeight)} kg`);
+      const target = bits.length ? bits.join(' · ') : 'kein Zielwert';
+      const progs = (ex.programs || []).map(esc).join(', ');
+      items += `<details class="exlib-item">
+          <summary>
+            <span class="exlib-name">${esc(ex.name)}</span>
+            <span class="exlib-target">${target}</span>
+          </summary>
+          <div class="exlib-detail">
+            <div>Zuletzt: ${target}</div>
+            <div class="muted">Aus Programm: ${progs || '—'}</div>
+          </div>
+        </details>`;
+    }
+    progHtml = `<div class="card exlib-group">
+        <h2>📋 Aus deinen Programmen <span class="exlib-count">${harvested.length}</span></h2>
+        ${items}
+      </div>`;
   }
 
   app.innerHTML = `
-    <p class="muted hint">${list.length} Übungen, gesammelt aus allen importierten Programmen.
-      Basis für den späteren Session-Builder.</p>
-    <div class="card">
-      ${items || '<p class="muted">Noch keine Übungen. Importiere ein Programm (Data → Programm importieren).</p>'}
-    </div>`;
+    <p class="muted hint">Übungsbibliothek — ${EXERCISE_CATALOG.length} Standardübungen nach Gerät${harvested.length ? ` + ${harvested.length} aus deinen Programmen` : ''}.</p>
+    ${catHtml}
+    ${progHtml}`;
 }
 
 async function renderData(app) {
