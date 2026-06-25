@@ -836,6 +836,35 @@ const EXERCISE_CATALOG = [
   { id: 'cat-tb-lunge', name: 'Trap-Bar Lunge', equipment: 'Trap-bar' },
   { id: 'cat-tb-calf-raise', name: 'Trap-Bar Calf Raise', equipment: 'Trap-bar' },
   { id: 'cat-tb-ohp', name: 'Trap-Bar Overhead Press', equipment: 'Trap-bar' },
+  // Plyometric — Jumps
+  { id: 'cat-jump-box', name: 'Box Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-broad', name: 'Broad Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-depth', name: 'Depth Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-squat', name: 'Squat Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-tuck', name: 'Tuck Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-vertical', name: 'Vertical Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-split-squat', name: 'Split-Squat Jump', equipment: 'Jumps' },
+  { id: 'cat-jump-lateral-bound', name: 'Lateral Bound', equipment: 'Jumps' },
+  { id: 'cat-jump-single-leg-bound', name: 'Single-Leg Bound', equipment: 'Jumps' },
+  { id: 'cat-jump-pogo', name: 'Pogo Hops', equipment: 'Jumps' },
+  { id: 'cat-jump-hurdle', name: 'Hurdle Hops', equipment: 'Jumps' },
+  // Plyometric — Throws (med ball)
+  { id: 'cat-throw-chest-pass', name: 'Med Ball Chest Pass', equipment: 'Throws' },
+  { id: 'cat-throw-overhead', name: 'Med Ball Overhead Throw', equipment: 'Throws' },
+  { id: 'cat-throw-rotational', name: 'Med Ball Rotational Throw', equipment: 'Throws' },
+  { id: 'cat-throw-scoop', name: 'Med Ball Scoop Toss', equipment: 'Throws' },
+  { id: 'cat-throw-shot-put', name: 'Med Ball Shot Put', equipment: 'Throws' },
+  { id: 'cat-throw-backward-overhead', name: 'Med Ball Backward Overhead Throw', equipment: 'Throws' },
+  { id: 'cat-throw-side', name: 'Med Ball Side Throw', equipment: 'Throws' },
+  { id: 'cat-throw-push-press', name: 'Med Ball Push-Press Throw', equipment: 'Throws' },
+  { id: 'cat-throw-kneeling-overhead', name: 'Kneeling Overhead Throw', equipment: 'Throws' },
+  // Plyometric — Slams
+  { id: 'cat-slam-overhead', name: 'Overhead Med Ball Slam', equipment: 'Slams' },
+  { id: 'cat-slam-rotational', name: 'Rotational Slam', equipment: 'Slams' },
+  { id: 'cat-slam-side', name: 'Side-to-Side Slam', equipment: 'Slams' },
+  { id: 'cat-slam-half-kneeling', name: 'Half-Kneeling Slam', equipment: 'Slams' },
+  { id: 'cat-slam-wall-ball', name: 'Wall Ball Slam', equipment: 'Slams' },
+  { id: 'cat-slam-squat', name: 'Squat-to-Slam', equipment: 'Slams' },
 ];
 
 const EQUIPMENT_GROUPS = [
@@ -843,6 +872,9 @@ const EQUIPMENT_GROUPS = [
   { key: 'Dumbbell', icon: '💪' },
   { key: 'Kettlebell', icon: '🔔' },
   { key: 'Trap-bar', icon: '🔷' },
+  { key: 'Jumps', icon: '🦘' },
+  { key: 'Throws', icon: '🤾' },
+  { key: 'Slams', icon: '💥' },
 ];
 
 /* Exercise library — built-in catalog grouped by equipment, plus every exercise
@@ -894,7 +926,7 @@ async function renderExercises(app) {
   }
 
   app.innerHTML = `
-    <p class="muted hint">Übungsbibliothek — ${EXERCISE_CATALOG.length} Standardübungen nach Gerät${harvested.length ? ` + ${harvested.length} aus deinen Programmen` : ''}.</p>
+    <p class="muted hint">Übungsbibliothek — ${EXERCISE_CATALOG.length} Standardübungen nach Kategorie${harvested.length ? ` + ${harvested.length} aus deinen Programmen` : ''}.</p>
     ${catHtml}
     ${progHtml}`;
 }
