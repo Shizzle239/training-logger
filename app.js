@@ -58,6 +58,38 @@ function download(filename, text, mime) {
 function epley(w, r) { return r === 1 ? w : w * (1 + r / 30); }
 function brzycki(w, r) { return r === 1 ? w : w * 36 / (37 - r); }
 
+/* ---------------------------------------------------------------- theme */
+
+const THEMES = [
+  { id: 'green', name: 'Green', accent: '#34d27b' },
+  { id: 'teal', name: 'Teal', accent: '#2dd4bf' },
+  { id: 'blue', name: 'Blue', accent: '#5b9cf6' },
+  { id: 'indigo', name: 'Indigo', accent: '#7f88f7' },
+  { id: 'purple', name: 'Purple', accent: '#a679f2' },
+  { id: 'pink', name: 'Pink', accent: '#ec5e9c' },
+  { id: 'amber', name: 'Amber', accent: '#e8b53e' },
+  { id: 'orange', name: 'Orange', accent: '#f5833f' },
+];
+
+function hexToRgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+function currentTheme() { return localStorage.getItem('wl.theme') || 'green'; }
+
+/* apply a theme by swapping the accent CSS variables on :root (instant, app-wide) */
+function applyTheme(id) {
+  const t = THEMES.find(x => x.id === id) || THEMES[0];
+  const s = document.documentElement.style;
+  s.setProperty('--accent', t.accent);
+  s.setProperty('--accent-dim', hexToRgba(t.accent, 0.16));
+  s.setProperty('--accent-border', hexToRgba(t.accent, 0.55));
+  return t.id;
+}
+
+function setTheme(id) { localStorage.setItem('wl.theme', applyTheme(id)); }
+
 /* ---------------------------------------------------------------- state */
 
 const App = {
@@ -181,13 +213,14 @@ function route() {
   if (parts[0] === 'data') return { view: 'data' };
   if (parts[0] === 'archive') return { view: 'archive' };
   if (parts[0] === 'exercises') return { view: 'exercises' };
+  if (parts[0] === 'settings') return { view: 'settings' };
   return { view: 'home' };
 }
 
 async function render() {
   const r = route();
-  // 'archive' and 'exercises' live under the Data tab — keep that tab highlighted
-  const navView = (r.view === 'archive' || r.view === 'exercises') ? 'data' : r.view;
+  // 'archive', 'exercises' and 'settings' live under the Data tab — keep that tab highlighted
+  const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data' : r.view;
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   const app = $('#app');
   app.scrollTop = 0;
@@ -199,6 +232,7 @@ async function render() {
     else if (r.view === 'data') await renderData(app);
     else if (r.view === 'archive') await renderArchive(app);
     else if (r.view === 'exercises') await renderExercises(app);
+    else if (r.view === 'settings') await renderSettings(app);
     else await renderHome(app);
   } catch (e) {
     app.innerHTML = `<div class="card error">Something went wrong: ${esc(e.message)}</div>`;
@@ -931,6 +965,29 @@ async function renderExercises(app) {
     ${progHtml}`;
 }
 
+/* ------------------------------------------------------------ settings */
+
+async function renderSettings(app) {
+  $('#topbar-title').textContent = 'Settings';
+  $('#topbar-back').hidden = false;
+  const cur = currentTheme();
+  const swatches = THEMES.map(t => `
+    <button type="button" class="theme-swatch${t.id === cur ? ' on' : ''}" data-theme="${esc(t.id)}"
+            style="--sw:${t.accent}" aria-label="${esc(t.name)}">
+      <span class="theme-dot"></span>
+      <span class="theme-name">${esc(t.name)}</span>
+      ${t.id === cur ? '<span class="theme-check">✓</span>' : ''}
+    </button>`).join('');
+  app.innerHTML = `
+    <div class="card">
+      <h2>Farbschema</h2>
+      <p class="muted hint">Wird sofort auf die ganze App angewendet — jederzeit änderbar.</p>
+      <div class="theme-grid">${swatches}</div>
+    </div>`;
+  $$('.theme-swatch').forEach(b =>
+    b.addEventListener('click', () => { setTheme(b.dataset.theme); render(); }));
+}
+
 async function renderData(app) {
   $('#topbar-title').textContent = 'Data';
   $('#topbar-back').hidden = false;
@@ -951,6 +1008,10 @@ async function renderData(app) {
     <a class="card nav-row" href="#/exercises">
       <span class="nav-row-main">🏋️ Exercises</span>
       <span class="nav-row-meta">${exCount} Übungen ›</span>
+    </a>
+    <a class="card nav-row" href="#/settings">
+      <span class="nav-row-main">⚙️ Einstellungen</span>
+      <span class="nav-row-meta">Farbschema ›</span>
     </a>
     <div class="card">
       <h2>Backup</h2>
@@ -1440,6 +1501,7 @@ function wireEvents() {
 /* ---------------------------------------------------------------- init */
 
 async function init() {
+  applyTheme(currentTheme());
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* file:// or unsupported */ });
   }
