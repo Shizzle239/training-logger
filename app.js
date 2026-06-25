@@ -216,6 +216,8 @@ function route() {
   if (parts[0] === 'settings') return { view: 'settings' };
   if (parts[0] === 'plans' && parts[1] === 'new') return { view: 'planSetup', id: null };
   if (parts[0] === 'plans' && parts[1] === 'edit' && parts[2]) return { view: 'planSetup', id: parts[2] };
+  if (parts[0] === 'plans' && parts[1] === 'day' && parts[2] && parts[3] != null) return { view: 'dayEdit', id: parts[2], day: parseInt(parts[3], 10) || 0 };
+  if (parts[0] === 'plans' && parts[1] === 'pick') return { view: 'exPick' };
   if (parts[0] === 'plans') return { view: 'plans' };
   return { view: 'home' };
 }
@@ -224,7 +226,7 @@ async function render() {
   const r = route();
   // 'archive', 'exercises' and 'settings' live under the Data tab — keep that tab highlighted
   const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data'
-    : (r.view === 'planSetup' ? 'plans' : r.view);
+    : (['planSetup', 'dayEdit', 'exPick'].includes(r.view) ? 'plans' : r.view);
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   const app = $('#app');
   app.scrollTop = 0;
@@ -239,6 +241,8 @@ async function render() {
     else if (r.view === 'settings') await renderSettings(app);
     else if (r.view === 'plans') await renderPlans(app);
     else if (r.view === 'planSetup') await renderPlanSetup(app, r.id);
+    else if (r.view === 'dayEdit') await renderDayEditor(app, r.id, r.day);
+    else if (r.view === 'exPick') await renderExercisePicker(app);
     else await renderHome(app);
   } catch (e) {
     app.innerHTML = `<div class="card error">Something went wrong: ${esc(e.message)}</div>`;
@@ -1102,9 +1106,10 @@ async function renderPlanSetup(app, id) {
   $('#topbar-back').hidden = false;
 
   const dayRows = (p.days || []).map((d, i) =>
-    `<label class="setup-day">Tag ${i + 1}
-       <input type="text" class="f-dayname" data-i="${i}" value="${esc(d.name || '')}" placeholder="z.B. Lower / Upper / Push">
-     </label>`).join('');
+    `<div class="setup-day-row">
+       <input type="text" class="f-dayname" data-i="${i}" value="${esc(d.name || '')}" placeholder="Tag ${i + 1} — z.B. Lower">
+       <button type="button" class="btn small day-edit-btn" data-i="${i}">Übungen ›</button>
+     </div>`).join('');
 
   app.innerHTML = `
     <div class="card">
@@ -1128,7 +1133,7 @@ async function renderPlanSetup(app, id) {
         </div>
       </div>
       <div class="setup-days">${dayRows}</div>
-      <p class="muted hint">Übungen je Tag (Warmup · Plyo · Main) kommen im nächsten Schritt.</p>
+      <p class="muted hint">Tippe „Übungen" je Tag, um den Hauptteil zu füllen.</p>
       <div class="btn-row">
         <button type="button" class="btn accent" id="plan-save">Speichern</button>
         <a class="btn" href="#/plans">Abbrechen</a>
@@ -1151,6 +1156,13 @@ async function renderPlanSetup(app, id) {
     }
     renderPlanSetup(app, id);
   }));
+  $$('.day-edit-btn').forEach(btn => btn.addEventListener('click', async () => {
+    plan.updatedAt = Date.now();
+    await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
+    if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; }
+    App.dayCtx = null;
+    location.hash = `#/plans/day/${plan.id}/${btn.dataset.i}`;
+  }));
   $('#plan-save').addEventListener('click', async () => {
     if (!plan.name || !plan.name.trim()) { toast('Bitte Name eingeben'); return; }
     plan.updatedAt = Date.now();
@@ -1160,6 +1172,177 @@ async function renderPlanSetup(app, id) {
     App.editPlan = null;
     toast('Gespeichert ✓');
     location.hash = '#/plans';
+  });
+}
+
+/* --------------------------------------------------------- day editor */
+
+function makeSets(n, t) {
+  return Array.from({ length: Math.max(1, n || 1) }, () => ({
+    reps: t.reps || '', rpe: t.rpe != null ? t.rpe : null, weight: t.weight != null ? t.weight : null,
+  }));
+}
+
+/* flatten a day's main blocks into a flat, editable item list */
+function itemsFromDay(day) {
+  const items = [];
+  for (const block of (day.blocks || [])) {
+    (block.exercises || []).forEach((ex, idx) => {
+      if (block.type === 'superset') {
+        const t = ex.target || {};
+        items.push({ exId: ex.id, name: ex.name, sets: block.rounds || 3,
+          reps: t.reps != null ? String(t.reps) : '', rpe: t.rpe != null ? t.rpe : null,
+          weight: t.weight != null ? t.weight : null, ss: idx > 0 });
+      } else {
+        const sets = ex.sets || [];
+        const t = sets[0] || {};
+        items.push({ exId: ex.id, name: ex.name, sets: sets.length || 3,
+          reps: t.reps != null ? String(t.reps) : '', rpe: t.rpe != null ? t.rpe : null,
+          weight: t.weight != null ? t.weight : null, ss: false });
+      }
+    });
+  }
+  return items;
+}
+
+/* rebuild straight/superset blocks from the flat item list (ss = grouped with previous) */
+function buildBlocksFromItems(items) {
+  const blocks = [];
+  let cur = null;
+  items.forEach((it, i) => {
+    const target = { reps: it.reps || '', rpe: it.rpe != null ? it.rpe : null, weight: it.weight != null ? it.weight : null };
+    if (it.ss && cur && i > 0) {
+      if (cur.type === 'straight') {
+        const first = cur.exercises[0];
+        cur = { id: cur.id, type: 'superset', rounds: (first.sets && first.sets.length) || it.sets || 3,
+          exercises: [{ id: first.id, label: '', name: first.name, target: first._t },
+                      { id: it.exId, label: '', name: it.name, target }] };
+      } else {
+        cur.exercises.push({ id: it.exId, label: '', name: it.name, target });
+      }
+    } else {
+      if (cur) blocks.push(cur);
+      cur = { id: genId('blk'), type: 'straight',
+        exercises: [{ id: it.exId, label: '', name: it.name, sets: makeSets(it.sets, target), _t: target }] };
+    }
+  });
+  if (cur) blocks.push(cur);
+  const letters = 'abcdefgh';
+  blocks.forEach((b, bi) => b.exercises.forEach((ex, ei) => {
+    ex.label = b.type === 'superset' ? `${bi + 1}${letters[ei] || ''}` : `${bi + 1}`;
+    delete ex._t;
+  }));
+  return blocks;
+}
+
+async function renderDayEditor(app, planId, dayIdx) {
+  const plan = (App.editPlan && App.editPlan.id === planId) ? App.editPlan : await dbGet('plans', planId);
+  if (!plan) { location.hash = '#/plans'; return; }
+  App.editPlan = plan;
+  const day = (plan.program.days || [])[dayIdx];
+  if (!day) { location.hash = `#/plans/edit/${planId}`; return; }
+  const ctxKey = `${planId}|${dayIdx}`;
+  if (!App.dayCtx || App.dayCtx.key !== ctxKey) {
+    App.dayCtx = { key: ctxKey, planId, dayIdx };
+    App.dayItems = itemsFromDay(day);
+  }
+  const items = App.dayItems;
+  $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
+  $('#topbar-back').hidden = false;
+
+  const rpeOpts = sel => { let h = '<option value="">RPE</option>'; for (let v = 6; v <= 10; v += 0.5) h += `<option value="${v}" ${sel === v ? 'selected' : ''}>${v}</option>`; return h; };
+  const rows = items.map((it, i) => `
+    <div class="ex-item">
+      <div class="ex-item-top">
+        <span class="ex-item-name">${esc(it.name)}</span>
+        <span class="ex-item-tools">
+          <button type="button" class="ic up" data-i="${i}" aria-label="hoch">↑</button>
+          <button type="button" class="ic down" data-i="${i}" aria-label="runter">↓</button>
+          <button type="button" class="ic rm" data-i="${i}" aria-label="entfernen">✕</button>
+        </span>
+      </div>
+      ${i > 0 ? `<label class="ss-toggle"><input type="checkbox" class="f-ss" data-i="${i}" ${it.ss ? 'checked' : ''}> Superset mit vorheriger</label>` : ''}
+      <div class="ex-item-fields">
+        <label>Sätze<span class="mini-step"><button type="button" class="ic sdec" data-i="${i}">−</button><b class="sets-v">${it.sets}</b><button type="button" class="ic sinc" data-i="${i}">+</button></span></label>
+        <label>Reps<input type="text" class="f-er" data-i="${i}" value="${esc(it.reps)}" placeholder="8"></label>
+        <label>RPE<select class="f-erpe" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
+        <label>kg<input type="number" class="f-ewt" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
+      </div>
+    </div>`).join('');
+
+  app.innerHTML = `
+    <p class="muted hint">Hauptteil — „${esc(day.name)}". Aufwärmen &amp; Plyometrie folgen im nächsten Update.</p>
+    <div class="day-ex-list">${rows || '<div class="card"><p class="muted">Noch keine Übungen — füge unten welche hinzu.</p></div>'}</div>
+    <a class="btn block" href="#/plans/pick">+ Übung hinzufügen</a>
+    <div class="btn-row">
+      <button type="button" class="btn accent" id="day-save">Speichern</button>
+      <a class="btn" href="#/plans/edit/${planId}">Zurück</a>
+    </div>`;
+
+  const reRender = () => renderDayEditor(app, planId, dayIdx);
+  $$('.f-ss').forEach(c => c.addEventListener('change', () => { items[+c.dataset.i].ss = c.checked; }));
+  $$('.f-er').forEach(inp => inp.addEventListener('input', () => { items[+inp.dataset.i].reps = inp.value; }));
+  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { items[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); }));
+  $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { items[+inp.dataset.i].weight = inp.value === '' ? null : Number(inp.value); }));
+  $$('.sinc').forEach(b => b.addEventListener('click', () => { const it = items[+b.dataset.i]; it.sets = Math.min(10, it.sets + 1); reRender(); }));
+  $$('.sdec').forEach(b => b.addEventListener('click', () => { const it = items[+b.dataset.i]; it.sets = Math.max(1, it.sets - 1); reRender(); }));
+  $$('.rm').forEach(b => b.addEventListener('click', () => { items.splice(+b.dataset.i, 1); reRender(); }));
+  $$('.up').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.i; if (i > 0) { [items[i - 1], items[i]] = [items[i], items[i - 1]]; reRender(); } }));
+  $$('.down').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.i; if (i < items.length - 1) { [items[i + 1], items[i]] = [items[i], items[i + 1]]; reRender(); } }));
+  $('#day-save').addEventListener('click', async () => {
+    const p = plan.program;
+    day.blocks = buildBlocksFromItems(items);
+    plan.updatedAt = Date.now();
+    await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
+    if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; await harvestExercises(p); }
+    toast('Tag gespeichert ✓');
+    App.dayCtx = null;
+    location.hash = `#/plans/edit/${planId}`;
+  });
+}
+
+async function renderExercisePicker(app) {
+  $('#topbar-title').textContent = 'Übung wählen';
+  $('#topbar-back').hidden = false;
+  const ctx = App.dayCtx;
+  if (!ctx || !App.dayItems) { location.hash = '#/plans'; return; }
+  const back = `#/plans/day/${ctx.planId}/${ctx.dayIdx}`;
+  const add = (exId, name) => { App.dayItems.push({ exId, name, sets: 3, reps: '', rpe: null, weight: null, ss: false }); location.hash = back; };
+  const harvested = (await dbGetAll('exercises')).map(e => ({ id: e.id, name: e.name }));
+
+  let groups = '';
+  for (const g of EQUIPMENT_GROUPS) {
+    const list = EXERCISE_CATALOG.filter(e => e.equipment === g.key);
+    groups += `<div class="pick-group"><div class="pick-head">${g.icon} ${esc(g.key)}</div>`
+      + list.map(e => `<button type="button" class="pick-ex" data-id="${esc(e.id)}" data-name="${esc(e.name)}">${esc(e.name)}</button>`).join('') + '</div>';
+  }
+  if (harvested.length) {
+    groups += `<div class="pick-group"><div class="pick-head">📋 Aus deinen Programmen</div>`
+      + harvested.map(e => `<button type="button" class="pick-ex" data-id="${esc(e.id)}" data-name="${esc(e.name)}">${esc(e.name)}</button>`).join('') + '</div>';
+  }
+
+  app.innerHTML = `
+    <input type="text" id="pick-search" class="pick-search" placeholder="Suchen…">
+    <div class="card pick-custom">
+      <label>Eigene Übung<input type="text" id="pick-custom-name" placeholder="Name"></label>
+      <button type="button" class="btn small" id="pick-custom-add">+</button>
+    </div>
+    <div id="pick-list">${groups}</div>
+    <a class="btn block" href="${back}">Abbrechen</a>`;
+
+  $$('.pick-ex').forEach(b => b.addEventListener('click', () => add(b.dataset.id, b.dataset.name)));
+  $('#pick-custom-add').addEventListener('click', () => {
+    const n = $('#pick-custom-name').value.trim();
+    if (!n) { toast('Name eingeben'); return; }
+    add(genId('ex'), n);
+  });
+  const search = $('#pick-search');
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase();
+    $$('.pick-ex').forEach(b => { b.style.display = b.dataset.name.toLowerCase().includes(q) ? '' : 'none'; });
+    $$('.pick-group').forEach(g => {
+      g.style.display = Array.from(g.querySelectorAll('.pick-ex')).some(b => b.style.display !== 'none') ? '' : 'none';
+    });
   });
 }
 
