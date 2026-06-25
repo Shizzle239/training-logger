@@ -1701,6 +1701,17 @@ function wireEvents() {
 async function init() {
   applyTheme(currentTheme());
   if ('serviceWorker' in navigator) {
+    // Auto-apply updates: when a new service worker takes control, reload once so
+    // the fresh version shows on the FIRST relaunch (no more "open the app twice").
+    // Guarded so it only fires on an update (an existing controller), never first install.
+    if (navigator.serviceWorker.controller) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        location.reload();
+      });
+    }
     navigator.serviceWorker.register('sw.js').catch(() => { /* file:// or unsupported */ });
   }
   try {
