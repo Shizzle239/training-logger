@@ -334,6 +334,11 @@ button { font: inherit; color: inherit; }
 .rpe-sugg { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
 .rpe-sugg b { color: var(--text); }
 .kg-apply { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 7px; color: var(--accent); font-size: 12px; font-weight: 600; padding: 5px 10px; cursor: pointer; flex: none; }
+.week-bar { padding: 10px 12px; }
+.week-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.week-tab { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); font-size: 11.5px; padding: 5px 9px; cursor: pointer; }
+.week-tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.week-ramp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 
 .archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
 .archive-item:last-child { border-bottom: none; }

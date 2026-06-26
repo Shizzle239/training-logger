@@ -129,7 +129,7 @@ function forEachSet(day, cb) {
 }
 
 /* render a list of straight/superset blocks into loggable set-row HTML */
-function blocksToHtml(week, dayId, blocks) {
+function blocksToHtml(week, dayId, blocks, wt) {
   let html = '';
   (blocks || []).forEach((block, bi) => {
     const names = block.exercises.map(e => `<span class="bh-ex"><b>${esc(e.label)}</b> ${esc(e.name)}</span>`).join('<span class="bh-plus">+</span>');
@@ -139,14 +139,15 @@ function blocksToHtml(week, dayId, blocks) {
       for (let r = 0; r < rounds; r++) {
         let groupRows = '';
         for (const ex of block.exercises) {
-          const t = exerciseSets(ex, block)[r];
+          const t0 = exerciseSets(ex, block)[r];
+          const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0;
           groupRows += setRowHtml(week, dayId, ex, r, t, block.rest);
         }
         rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
       }
     } else {
       const ex = block.exercises[0];
-      exerciseSets(ex, block).forEach((t, i) => { rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest); });
+      exerciseSets(ex, block).forEach((t0, i) => { const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0; rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest); });
     }
     html += `
       <section class="block band-${bi % 2}">
@@ -370,17 +371,18 @@ async function renderLog(app, week, dayId) {
       }).join('')}
     </section>` : '';
 
+  const wt = (day.weekTargets && day.weekTargets[week]) || null;
   const pBlocks = (day.plyo && day.plyo.blocks) || [];
   const pItems = (day.plyo && day.plyo.items) || [];
   const plyo = pBlocks.length
-    ? `<div class="section-label">${esc((day.plyo && day.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks)
+    ? `<div class="section-label">${esc((day.plyo && day.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks, wt)
     : (pItems.length ? `
     <details class="card info-block">
       <summary>${esc((day.plyo && day.plyo.title) || 'Plyo / Core')}</summary>
       <ul>${pItems.map(i => `<li><strong>${esc(i.name)}</strong> — ${esc(i.scheme)}</li>`).join('')}</ul>
     </details>` : '');
 
-  const blocksHtml = blocksToHtml(week, dayId, day.blocks);
+  const blocksHtml = blocksToHtml(week, dayId, day.blocks, wt);
 
   const sess = App.sessionCache;
   app.innerHTML = `
@@ -1287,6 +1289,12 @@ async function renderDayEditor(app, planId, dayIdx) {
       if (v != null && l.name) nm.set(l.name.toLowerCase(), v);
     }
     App.dayMaxes = nm;
+    App.dayWeek = 1;
+    const wt0 = day.weekTargets || {};
+    for (const sk of ['plyo', 'main']) for (const it of App.daySections[sk]) {
+      it.wk = {};
+      for (const w of Object.keys(wt0)) { if (wt0[w] && wt0[w][it.exId]) it.wk[Number(w)] = Object.assign({}, wt0[w][it.exId]); }
+    }
   }
   const S = App.daySections;
   $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
@@ -1299,11 +1307,18 @@ async function renderDayEditor(app, planId, dayIdx) {
     for (const [k, v] of m) { if (k && (k.includes(n) || n.includes(k))) return v; }
     return null;
   };
+  const W = App.dayWeek || 1;
+  const tw = it => W === 1 ? { reps: it.reps, rpe: it.rpe, weight: it.weight } : Object.assign({ reps: it.reps, rpe: it.rpe, weight: it.weight }, (it.wk && it.wk[W]) || {});
+  const setT = (it, key, val) => {
+    if (W === 1) { it[key] = val; }
+    else { it.wk = it.wk || {}; it.wk[W] = it.wk[W] || { reps: it.reps, rpe: it.rpe, weight: it.weight }; it.wk[W][key] = val; }
+  };
   const exRows = (arr, sec) => arr.map((it, i) => {
+    const t = tw(it);
     const auto1 = lookup1RM(it.name);
     const eff1 = it.oneRM != null ? it.oneRM : auto1;
-    const repsN = firstNumber(it.reps);
-    const sugg = (eff1 > 0 && repsN > 0 && it.rpe != null) ? roundHalf(rpeWeight(eff1, repsN, it.rpe)) : null;
+    const repsN = firstNumber(t.reps);
+    const sugg = (eff1 > 0 && repsN > 0 && t.rpe != null) ? roundHalf(rpeWeight(eff1, repsN, t.rpe)) : null;
     return `
     <div class="ex-item">
       <div class="ex-item-top">
@@ -1317,12 +1332,12 @@ async function renderDayEditor(app, planId, dayIdx) {
       ${i > 0 ? `<label class="ss-toggle"><input type="checkbox" class="f-ss" data-sec="${sec}" data-i="${i}" ${it.ss ? 'checked' : ''}> Superset mit vorheriger</label>` : ''}
       <div class="ex-item-fields">
         <label>Sätze<span class="mini-step"><button type="button" class="ic sdec" data-sec="${sec}" data-i="${i}">−</button><b>${it.sets}</b><button type="button" class="ic sinc" data-sec="${sec}" data-i="${i}">+</button></span></label>
-        <label>Reps<input type="text" class="f-er" data-sec="${sec}" data-i="${i}" value="${esc(it.reps)}" placeholder="8"></label>
-        <label>RPE<select class="f-erpe" data-sec="${sec}" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
-        <label>kg<input type="number" class="f-ewt" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
+        <label>Reps<input type="text" class="f-er" data-sec="${sec}" data-i="${i}" value="${esc(t.reps)}" placeholder="8"></label>
+        <label>RPE<select class="f-erpe" data-sec="${sec}" data-i="${i}">${rpeOpts(t.rpe)}</select></label>
+        <label>kg<input type="number" class="f-ewt" data-sec="${sec}" data-i="${i}" step="2.5" value="${t.weight != null ? t.weight : ''}" placeholder="opt"></label>
         <label>1RM<input type="number" class="f-e1rm" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.oneRM != null ? it.oneRM : ''}" placeholder="${auto1 != null ? fmtNum(auto1) : 'opt'}"></label>
       </div>
-      ${sugg != null ? `<div class="rpe-sugg"><span>RPE ${it.rpe} × ${esc(it.reps)} ≈ <b>${fmtNum(sugg)} kg</b></span><button type="button" class="kg-apply" data-sec="${sec}" data-i="${i}" data-v="${sugg}">Übernehmen</button></div>` : ''}
+      ${sugg != null ? `<div class="rpe-sugg"><span>RPE ${t.rpe} × ${esc(t.reps)} ≈ <b>${fmtNum(sugg)} kg</b></span><button type="button" class="kg-apply" data-sec="${sec}" data-i="${i}" data-v="${sugg}">Übernehmen</button></div>` : ''}
       <div class="ex-rest${it.rest && it.rest.auto ? ' on' : ''}">
         <label class="rest-toggle"><input type="checkbox" class="f-rest-auto" data-sec="${sec}" data-i="${i}" ${it.rest && it.rest.auto ? 'checked' : ''}> Auto-Pause</label>
         <span class="rest-presets">
@@ -1341,6 +1356,10 @@ async function renderDayEditor(app, planId, dayIdx) {
   const wuRows = S.warmup.map((it, i) =>
     `<div class="wu-edit-row"><input type="text" class="f-wu" data-i="${i}" value="${esc(it)}" placeholder="z.B. Rudern 5 min"><button type="button" class="ic wu-rm" data-i="${i}" aria-label="entfernen">✕</button></div>`).join('');
   app.innerHTML = `
+    ${plan.program.weeks > 1 ? `<div class="card week-bar">
+      <div class="week-tabs">${Array.from({ length: plan.program.weeks }, (_, k) => `<button type="button" class="week-tab${(k + 1) === W ? ' on' : ''}" data-w="${k + 1}">W${k + 1}</button>`).join('')}</div>
+      <div class="week-ramp"><span class="muted hint">Woche ${W} · Auto-Rampe:</span><button type="button" class="btn small ramp" data-kind="rpe">RPE +0.5</button><button type="button" class="btn small ramp" data-kind="kg">kg +2.5</button><button type="button" class="btn small ramp" data-kind="deload">Deload</button></div>
+    </div>` : ''}
     <div class="card section-card">
       <h2>Aufwärmen &amp; Mobility</h2>
       <p class="muted hint">Checkliste — im Training zum Abhaken.</p>
@@ -1356,6 +1375,22 @@ async function renderDayEditor(app, planId, dayIdx) {
 
   const reRender = () => renderDayEditor(app, planId, dayIdx);
   const arrOf = el => S[el.dataset.sec];
+  $$('.week-tab').forEach(b => b.addEventListener('click', () => { App.dayWeek = +b.dataset.w; reRender(); }));
+  $$('.ramp').forEach(b => b.addEventListener('click', () => {
+    const kind = b.dataset.kind, N = plan.program.weeks;
+    for (const sk of ['plyo', 'main']) for (const it of S[sk]) {
+      it.wk = it.wk || {};
+      for (let w = 2; w <= N; w++) {
+        const base = { reps: it.reps, rpe: it.rpe, weight: it.weight };
+        const cur = it.wk[w] || Object.assign({}, base);
+        if (kind === 'rpe' && base.rpe != null) cur.rpe = Math.min(10, base.rpe + 0.5 * (w - 1));
+        if (kind === 'kg' && base.weight != null) cur.weight = roundHalf(base.weight + 2.5 * (w - 1));
+        if (kind === 'deload' && w === N) { if (base.weight != null) cur.weight = roundHalf(base.weight * 0.8); if (base.rpe != null) cur.rpe = Math.max(6, base.rpe - 2); }
+        it.wk[w] = cur;
+      }
+    }
+    toast('Rampe angewendet ✓'); reRender();
+  }));
   $$('.f-wu').forEach(inp => inp.addEventListener('input', () => { S.warmup[+inp.dataset.i] = inp.value; }));
   $$('.wu-rm').forEach(b => b.addEventListener('click', () => { S.warmup.splice(+b.dataset.i, 1); reRender(); }));
   const addWu = () => { const el = $('#wu-new'); const v = el.value.trim(); if (v) { S.warmup.push(v); reRender(); } };
@@ -1363,9 +1398,9 @@ async function renderDayEditor(app, planId, dayIdx) {
   $('#wu-new').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addWu(); } });
   $$('.add-ex').forEach(b => b.addEventListener('click', () => { App.pickSection = b.dataset.sec; location.hash = '#/plans/pick'; }));
   $$('.f-ss').forEach(c => c.addEventListener('change', () => { arrOf(c)[+c.dataset.i].ss = c.checked; }));
-  $$('.f-er').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].reps = inp.value; }));
-  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { arrOf(s)[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); reRender(); }));
-  $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].weight = inp.value === '' ? null : Number(inp.value); }));
+  $$('.f-er').forEach(inp => inp.addEventListener('input', () => { setT(arrOf(inp)[+inp.dataset.i], 'reps', inp.value); }));
+  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { setT(arrOf(s)[+s.dataset.i], 'rpe', s.value === '' ? null : Number(s.value)); reRender(); }));
+  $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { setT(arrOf(inp)[+inp.dataset.i], 'weight', inp.value === '' ? null : Number(inp.value)); }));
   $$('.sinc').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.min(10, it.sets + 1); reRender(); }));
   $$('.sdec').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.max(1, it.sets - 1); reRender(); }));
   $$('.rm').forEach(b => b.addEventListener('click', () => { arrOf(b).splice(+b.dataset.i, 1); reRender(); }));
@@ -1375,13 +1410,18 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.rest-pre').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; it.rest.sec = Number(b.dataset.s); it.rest.auto = true; reRender(); }));
   $$('.f-rest-sec').forEach(inp => inp.addEventListener('input', () => { const it = arrOf(inp)[+inp.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; const v = Number(inp.value); if (v > 0) it.rest.sec = v; }));
   $$('.f-e1rm').forEach(inp => inp.addEventListener('change', () => { const it = arrOf(inp)[+inp.dataset.i]; it.oneRM = inp.value === '' ? null : Number(inp.value); reRender(); }));
-  $$('.kg-apply').forEach(b => b.addEventListener('click', () => { arrOf(b)[+b.dataset.i].weight = Number(b.dataset.v); reRender(); }));
+  $$('.kg-apply').forEach(b => b.addEventListener('click', () => { setT(arrOf(b)[+b.dataset.i], 'weight', Number(b.dataset.v)); reRender(); }));
   $('#day-save').addEventListener('click', async () => {
     const p = plan.program;
     day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: S.warmup.filter(s => s && s.trim()) };
     if (S.plyo.length) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: buildBlocksFromItems(S.plyo) };
     else if (!(day.plyo && day.plyo.items && day.plyo.items.length)) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: [] };
     day.blocks = buildBlocksFromItems(S.main);
+    const weekTargets = {};
+    for (const it of [...S.plyo, ...S.main]) {
+      if (it.wk) for (const w of Object.keys(it.wk)) { const tt = it.wk[w]; weekTargets[w] = weekTargets[w] || {}; weekTargets[w][it.exId] = { reps: tt.reps, rpe: tt.rpe, weight: tt.weight }; }
+    }
+    day.weekTargets = weekTargets;
     plan.updatedAt = Date.now();
     await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
     if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; await harvestExercises(p); }
