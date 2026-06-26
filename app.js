@@ -102,6 +102,16 @@ const setKey = (week, dayId, exId, setIdx) => `${week}|${dayId}|${exId}|${setIdx
 const sessionKey = (week, dayId) => `${week}|${dayId}`;
 
 function getDay(dayId) { return App.program.days.find(d => d.id === dayId); }
+function dayForWeek(day, week) { return (day && day.weekOverride && day.weekOverride[week]) || day; }
+function bakeBlocks(blocks, wt) {
+  const out = JSON.parse(JSON.stringify(blocks || []));
+  if (wt) for (const b of out) for (const ex of b.exercises) {
+    const o = wt[ex.id]; if (!o) continue;
+    if (Array.isArray(ex.sets)) ex.sets = ex.sets.map(s => Object.assign({}, s, o));
+    if (ex.target) ex.target = Object.assign({}, ex.target, o);
+  }
+  return out;
+}
 
 /* normalized list of (exercise, sets[]) for a day — superset targets expanded */
 function exerciseSets(ex, block) {
@@ -295,12 +305,7 @@ async function renderHome(app) {
     anyCount[k] = (anyCount[k] || 0) + 1;
     if (s.done) doneCount[k] = (doneCount[k] || 0) + 1;
   }
-  const totals = {};
-  for (const day of App.program.days) {
-    let n = 0;
-    forEachSet(day, () => n++);
-    totals[day.id] = n;
-  }
+  const countSets = d => { let n = 0; forEachSet(d, () => n++); return n; };
 
   let weeksHtml = '';
   for (let w = 1; w <= App.program.weeks; w++) {
@@ -309,7 +314,7 @@ async function renderHome(app) {
       const k = `${w}|${day.id}`;
       const done = doneCount[k] || 0;
       const any = anyCount[k] || 0;
-      const total = totals[day.id];
+      const total = countSets(dayForWeek(day, w));
       const cls = done >= total ? 'complete' : (any > 0 ? 'started' : '');
       const sub = any > 0 ? `${done}/${total} done` : '—';
       dayBtns += `<a class="day-btn ${cls}" href="#/log/${w}/${day.id}">
@@ -348,6 +353,7 @@ function backupNudgeHtml(hasData) {
 async function renderLog(app, week, dayId) {
   const day = getDay(dayId);
   if (!day) { location.hash = '#/'; return; }
+  const src = dayForWeek(day, week);
 
   $('#topbar-title').textContent = `Week ${week} · ${day.name}`;
   $('#topbar-back').hidden = false;
@@ -361,28 +367,28 @@ async function renderLog(app, week, dayId) {
   App.sessionCache = await dbGet('sessions', sessionKey(week, dayId)) || null;
 
   const wDone = (App.sessionCache && App.sessionCache.warmupDone) || {};
-  const wItems = (day.warmup && day.warmup.items) || [];
+  const wItems = (src.warmup && src.warmup.items) || [];
   const warmup = wItems.length ? `
     <section class="card warmup-block">
-      <header class="wu-head">${esc((day.warmup && day.warmup.title) || 'Warm-up')}</header>
+      <header class="wu-head">${esc((src.warmup && src.warmup.title) || 'Warm-up')}</header>
       ${wItems.map((it, i) => {
         const txt = typeof it === 'string' ? it : `${(it && it.name) || ''}${it && it.scheme ? ' — ' + it.scheme : ''}`;
         return `<label class="wu-item${wDone[i] ? ' on' : ''}"><input type="checkbox" class="wu-check" data-i="${i}" ${wDone[i] ? 'checked' : ''}><span>${esc(txt)}</span></label>`;
       }).join('')}
     </section>` : '';
 
-  const wt = (day.weekTargets && day.weekTargets[week]) || null;
-  const pBlocks = (day.plyo && day.plyo.blocks) || [];
-  const pItems = (day.plyo && day.plyo.items) || [];
+  const wt = (day.weekOverride && day.weekOverride[week]) ? null : ((day.weekTargets && day.weekTargets[week]) || null);
+  const pBlocks = (src.plyo && src.plyo.blocks) || [];
+  const pItems = (src.plyo && src.plyo.items) || [];
   const plyo = pBlocks.length
-    ? `<div class="section-label">${esc((day.plyo && day.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks, wt)
+    ? `<div class="section-label">${esc((src.plyo && src.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks, wt)
     : (pItems.length ? `
     <details class="card info-block">
-      <summary>${esc((day.plyo && day.plyo.title) || 'Plyo / Core')}</summary>
+      <summary>${esc((src.plyo && src.plyo.title) || 'Plyo / Core')}</summary>
       <ul>${pItems.map(i => `<li><strong>${esc(i.name)}</strong> — ${esc(i.scheme)}</li>`).join('')}</ul>
     </details>` : '');
 
-  const blocksHtml = blocksToHtml(week, dayId, day.blocks, wt);
+  const blocksHtml = blocksToHtml(week, dayId, src.blocks, wt);
 
   const sess = App.sessionCache;
   app.innerHTML = `
@@ -793,7 +799,7 @@ function completedSessions(sets, sessions) {
     if (!c || c.total === 0) continue;
     const day = getDay(sess.day);
     let expected = null;
-    if (day) { expected = 0; forEachSet(day, () => expected++); }
+    if (day) { expected = 0; forEachSet(dayForWeek(day, sess.week), () => expected++); }
     const complete = expected != null
       ? (c.done >= expected && c.done === c.total)   // active block: all prescribed + all logged done
       : (c.done === c.total);                        // foreign block: all logged sets done
@@ -1275,13 +1281,44 @@ async function renderDayEditor(app, planId, dayIdx) {
   const day = (plan.program.days || [])[dayIdx];
   if (!day) { location.hash = `#/plans/edit/${planId}`; return; }
   const ctxKey = `${planId}|${dayIdx}`;
+  const indepW = w => !!(day.weekOverride && day.weekOverride[w]);
+  const loadSections = w => {
+    const sd = indepW(w) ? day.weekOverride[w] : day;
+    App.daySections = {
+      warmup: ((sd.warmup && sd.warmup.items) || []).map(it => typeof it === 'string' ? it : (it.name || '')),
+      plyo: itemsFromBlocks((sd.plyo && sd.plyo.blocks) || []),
+      main: itemsFromBlocks(sd.blocks || []),
+    };
+    const overlay = indepW(w) ? null : (day.weekTargets || {});
+    for (const sk of ['plyo', 'main']) for (const it of App.daySections[sk]) {
+      it.wk = {};
+      if (overlay) for (const k of Object.keys(overlay)) { if (overlay[k] && overlay[k][it.exId]) it.wk[Number(k)] = Object.assign({}, overlay[k][it.exId]); }
+    }
+  };
+  const flushSections = w => {
+    const Sx = App.daySections;
+    const prev = indepW(w) ? day.weekOverride[w] : day;
+    const warm = { title: (prev.warmup && prev.warmup.title) || 'Aufwärmen & Mobility', items: Sx.warmup.filter(s => s && s.trim()) };
+    if (indepW(w)) {
+      day.weekOverride[w] = {
+        warmup: warm,
+        plyo: { title: (prev.plyo && prev.plyo.title) || 'Plyometrie & Priming', blocks: buildBlocksFromItems(Sx.plyo) },
+        blocks: buildBlocksFromItems(Sx.main),
+      };
+    } else {
+      day.warmup = warm;
+      if (Sx.plyo.length) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: buildBlocksFromItems(Sx.plyo) };
+      else if (!(day.plyo && day.plyo.items && day.plyo.items.length)) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: [] };
+      day.blocks = buildBlocksFromItems(Sx.main);
+      const weekTargets = {};
+      for (const it of [...Sx.plyo, ...Sx.main]) { if (it.wk) for (const k of Object.keys(it.wk)) { const tt = it.wk[k]; weekTargets[k] = weekTargets[k] || {}; weekTargets[k][it.exId] = { reps: tt.reps, rpe: tt.rpe, weight: tt.weight }; } }
+      day.weekTargets = weekTargets;
+    }
+  };
   if (!App.dayCtx || App.dayCtx.key !== ctxKey) {
     App.dayCtx = { key: ctxKey, planId, dayIdx };
-    App.daySections = {
-      warmup: ((day.warmup && day.warmup.items) || []).map(it => typeof it === 'string' ? it : (it.name || '')),
-      plyo: itemsFromBlocks((day.plyo && day.plyo.blocks) || []),
-      main: itemsFromBlocks(day.blocks || []),
-    };
+    App.dayWeek = 1;
+    loadSections(1);
     const maxMap = new Map((await dbGetAll('maxes')).map(m => [m.id, m.oneRM]));
     const nm = new Map();
     for (const l of [...(App.program.maxLifts || []), ...((plan.program && plan.program.maxLifts) || [])]) {
@@ -1289,12 +1326,6 @@ async function renderDayEditor(app, planId, dayIdx) {
       if (v != null && l.name) nm.set(l.name.toLowerCase(), v);
     }
     App.dayMaxes = nm;
-    App.dayWeek = 1;
-    const wt0 = day.weekTargets || {};
-    for (const sk of ['plyo', 'main']) for (const it of App.daySections[sk]) {
-      it.wk = {};
-      for (const w of Object.keys(wt0)) { if (wt0[w] && wt0[w][it.exId]) it.wk[Number(w)] = Object.assign({}, wt0[w][it.exId]); }
-    }
   }
   const S = App.daySections;
   $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
@@ -1308,9 +1339,11 @@ async function renderDayEditor(app, planId, dayIdx) {
     return null;
   };
   const W = App.dayWeek || 1;
-  const tw = it => W === 1 ? { reps: it.reps, rpe: it.rpe, weight: it.weight } : Object.assign({ reps: it.reps, rpe: it.rpe, weight: it.weight }, (it.wk && it.wk[W]) || {});
+  const indep = indepW(W);
+  const baseMode = W === 1 || indep;
+  const tw = it => baseMode ? { reps: it.reps, rpe: it.rpe, weight: it.weight } : Object.assign({ reps: it.reps, rpe: it.rpe, weight: it.weight }, (it.wk && it.wk[W]) || {});
   const setT = (it, key, val) => {
-    if (W === 1) { it[key] = val; }
+    if (baseMode) { it[key] = val; }
     else { it.wk = it.wk || {}; it.wk[W] = it.wk[W] || { reps: it.reps, rpe: it.rpe, weight: it.weight }; it.wk[W][key] = val; }
   };
   const exRows = (arr, sec) => arr.map((it, i) => {
@@ -1357,8 +1390,9 @@ async function renderDayEditor(app, planId, dayIdx) {
     `<div class="wu-edit-row"><input type="text" class="f-wu" data-i="${i}" value="${esc(it)}" placeholder="z.B. Rudern 5 min"><button type="button" class="ic wu-rm" data-i="${i}" aria-label="entfernen">✕</button></div>`).join('');
   app.innerHTML = `
     ${plan.program.weeks > 1 ? `<div class="card week-bar">
-      <div class="week-tabs">${Array.from({ length: plan.program.weeks }, (_, k) => `<button type="button" class="week-tab${(k + 1) === W ? ' on' : ''}" data-w="${k + 1}">W${k + 1}</button>`).join('')}</div>
-      <div class="week-ramp"><span class="muted hint">Woche ${W} · Auto-Rampe:</span><button type="button" class="btn small ramp" data-kind="rpe">RPE +0.5</button><button type="button" class="btn small ramp" data-kind="kg">kg +2.5</button><button type="button" class="btn small ramp" data-kind="deload">Deload</button></div>
+      <div class="week-tabs">${Array.from({ length: plan.program.weeks }, (_, k) => `<button type="button" class="week-tab${(k + 1) === W ? ' on' : ''}${indepW(k + 1) ? ' indep' : ''}" data-w="${k + 1}">W${k + 1}</button>`).join('')}</div>
+      ${W > 1 ? `<label class="week-indep-row"><input type="checkbox" id="week-indep" ${indep ? 'checked' : ''}> Woche ${W} eigenständig (eigene Übungen)</label>` : ''}
+      ${indep ? `<p class="muted hint">Struktur &amp; Zahlen gelten nur für Woche ${W}.</p>` : `<div class="week-ramp"><span class="muted hint">Auto-Rampe:</span><button type="button" class="btn small ramp" data-kind="rpe">RPE +0.5</button><button type="button" class="btn small ramp" data-kind="kg">kg +2.5</button><button type="button" class="btn small ramp" data-kind="deload">Deload</button></div>`}
     </div>` : ''}
     <div class="card section-card">
       <h2>Aufwärmen &amp; Mobility</h2>
@@ -1375,7 +1409,26 @@ async function renderDayEditor(app, planId, dayIdx) {
 
   const reRender = () => renderDayEditor(app, planId, dayIdx);
   const arrOf = el => S[el.dataset.sec];
-  $$('.week-tab').forEach(b => b.addEventListener('click', () => { App.dayWeek = +b.dataset.w; reRender(); }));
+  $$('.week-tab').forEach(b => b.addEventListener('click', () => { flushSections(App.dayWeek); App.dayWeek = +b.dataset.w; loadSections(App.dayWeek); reRender(); }));
+  const indepToggle = $('#week-indep');
+  if (indepToggle) indepToggle.addEventListener('change', () => {
+    if (indepToggle.checked) {
+      flushSections(W);
+      const wtW = (day.weekTargets && day.weekTargets[W]) || null;
+      day.weekOverride = day.weekOverride || {};
+      day.weekOverride[W] = {
+        warmup: { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: ((day.warmup && day.warmup.items) || []).slice() },
+        plyo: { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: bakeBlocks((day.plyo && day.plyo.blocks) || [], wtW) },
+        blocks: bakeBlocks(day.blocks || [], wtW),
+      };
+      loadSections(W); toast(`Woche ${W} ist jetzt eigenständig`); reRender();
+    } else {
+      if (!confirm(`Woche ${W} wieder an die geteilte Struktur angleichen? Eigene Übungen dieser Woche gehen verloren.`)) { indepToggle.checked = true; return; }
+      delete day.weekOverride[W];
+      if (day.weekOverride && !Object.keys(day.weekOverride).length) delete day.weekOverride;
+      loadSections(W); toast(`Woche ${W} folgt wieder der Vorlage`); reRender();
+    }
+  });
   $$('.ramp').forEach(b => b.addEventListener('click', () => {
     const kind = b.dataset.kind, N = plan.program.weeks;
     for (const sk of ['plyo', 'main']) for (const it of S[sk]) {
@@ -1412,16 +1465,8 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.f-e1rm').forEach(inp => inp.addEventListener('change', () => { const it = arrOf(inp)[+inp.dataset.i]; it.oneRM = inp.value === '' ? null : Number(inp.value); reRender(); }));
   $$('.kg-apply').forEach(b => b.addEventListener('click', () => { setT(arrOf(b)[+b.dataset.i], 'weight', Number(b.dataset.v)); reRender(); }));
   $('#day-save').addEventListener('click', async () => {
+    flushSections(App.dayWeek);
     const p = plan.program;
-    day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: S.warmup.filter(s => s && s.trim()) };
-    if (S.plyo.length) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: buildBlocksFromItems(S.plyo) };
-    else if (!(day.plyo && day.plyo.items && day.plyo.items.length)) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: [] };
-    day.blocks = buildBlocksFromItems(S.main);
-    const weekTargets = {};
-    for (const it of [...S.plyo, ...S.main]) {
-      if (it.wk) for (const w of Object.keys(it.wk)) { const tt = it.wk[w]; weekTargets[w] = weekTargets[w] || {}; weekTargets[w][it.exId] = { reps: tt.reps, rpe: tt.rpe, weight: tt.weight }; }
-    }
-    day.weekTargets = weekTargets;
     plan.updatedAt = Date.now();
     await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
     if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; await harvestExercises(p); }
@@ -1587,15 +1632,16 @@ async function exportCSV() {
 
   // targets lookup from program
   const targets = {};
-  for (const day of App.program.days) {
-    forEachSet(day, (block, ex, i, t) => { targets[`${day.id}|${ex.id}|${i}`] = { ex, t }; });
+  for (let w = 1; w <= App.program.weeks; w++) for (const day of App.program.days) {
+    const owt = (day.weekOverride && day.weekOverride[w]) ? null : ((day.weekTargets && day.weekTargets[w]) || null);
+    forEachSet(dayForWeek(day, w), (block, ex, i, t) => { targets[`${w}|${day.id}|${ex.id}|${i}`] = { ex, t: (owt && owt[ex.id]) ? Object.assign({}, t, owt[ex.id]) : t }; });
   }
 
   const header = ['week', 'day', 'exercise_id', 'exercise', 'set', 'target_reps', 'target_rpe', 'target_weight_kg', 'reps', 'weight_kg', 'rpe', 'done', 'session_date'];
   const rows = [header.join(',')];
   const sorted = sets.slice().sort((a, b) => a.week - b.week || a.day.localeCompare(b.day) || a.ex.localeCompare(b.ex) || a.set - b.set);
   for (const s of sorted) {
-    const meta = targets[`${s.day}|${s.ex}|${s.set}`];
+    const meta = targets[`${s.week}|${s.day}|${s.ex}|${s.set}`];
     const sess = sessMap.get(`${s.week}|${s.day}`);
     rows.push([
       s.week, s.day, s.ex,
