@@ -33,6 +33,7 @@ Spalten (genau diese Namen, Reihenfolge egal):
 | weight         | optional | Richtgewicht kg. Bei Körpergewicht-Übungen LEER lassen (nicht 0). |
 | progress_lift  | optional | `x` → Übung erscheint im Progress-Tab als Chart. |
 | max_lift_name  | optional | Name → Lift erscheint im Maxes-Tab (z.B. `Back Squat`). |
+| week           | optional | leer/`1` = Basis (alle Wochen); `2`,`3`,… = Override nur für diese Woche (s. „Wochenweise Variation"). |
 
 ### Block-Regeln (wie der Konverter gruppiert)
 
@@ -46,6 +47,23 @@ Spalten (genau diese Namen, Reihenfolge egal):
 ### Übersprungener Tag (Ruhe-/Skip-Tag)
 Im **Warmups**-Blatt einen Eintrag (mit Notiztext) anlegen UND im **Exercises**-
 Blatt KEINE Zeilen für diesen `day_id` → die App zeigt einen reinen Infotag.
+
+### Wochenweise Variation (`week`-Spalte, optional)
+Leer/`1` = Basis (gilt für ALLE Wochen). `week = N` (≥2) = Override **nur** für
+Woche N. Zwei Modi, automatisch erkannt:
+
+- **Gleiche Übung, neue Zahlen** — eine `week=N`-Zeile mit demselben Übungsnamen
+  wie in der Basis, aber neuem `reps`/`rpe`/`weight`: nur die Zahlen ändern sich für
+  Woche N, die Struktur bleibt geteilt. Nur ausgefüllte Felder überschreiben (Rest
+  erbt die Basis). → erzeugt `weekTargets[N]`. Für Last-/RPE-Progression.
+- **Neue/andere Übungen** — listet eine `week=N`-Zeile mindestens eine Übung auf,
+  die es in der Basis NICHT gibt, wird Woche N für diesen Tag **eigenständig** und
+  komplett aus den `week=N`-Zeilen gebaut. → erzeugt `weekOverride[N]`. Für
+  Deload-/Peak-Wochen mit anderer Struktur.
+
+Basis-Zeilen (ohne `week`) müssen die Tagesstruktur weiterhin definieren. Beispiel
+Last-Progression: Back Squats Woche 2 auf 102.5 kg, Woche 3 auf 105 kg = zwei extra
+Zeilen mit gleichem `day_id`/`block`/`exercise`, geändertem `weight`, `week` = 2 / 3.
 
 ---
 

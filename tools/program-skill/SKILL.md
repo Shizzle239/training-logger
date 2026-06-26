@@ -32,6 +32,11 @@ also reads `.xlsx` directly via Data → "Programm importieren (Excel / JSON)").
      ghost days appear (this is the #1 mistake).
    - Distinct `label`s per superset (2a, 2b — never two 2a).
    - Always fill `reps`; leave `weight` empty for bodyweight moves (not 0).
+   - **Per-week variation (periodization):** if loads/reps/RPE differ by week, or
+     there is a deload/peak week, use the optional `week` column (see
+     `reference/target-format.md` → "Wochenweise Variation"). Same exercise + new
+     numbers in a `week=N` row → a per-week target (shared structure); a `week=N`
+     row that introduces a new/other exercise → that week becomes independent.
 
 3. **Ask when unsure — do NOT guess.** If the source is missing reps, RPE, set
    counts, weights, or the superset grouping is ambiguous, ask the user targeted

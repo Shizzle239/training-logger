@@ -24,14 +24,18 @@ PROGRAM = [
 ]
 
 EX_HEADER = ["day_id", "day_name", "day_title", "block", "label", "exercise",
-             "sets", "reps", "rpe", "weight", "progress_lift", "max_lift_name"]
+             "sets", "reps", "rpe", "weight", "progress_lift", "max_lift_name", "week"]
 EXERCISES = [
     EX_HEADER,
-    # day_id, day_name, day_title, block, label, exercise, sets, reps, rpe, weight, progress, max_name
+    # day_id, day_name, day_title, block, label, exercise, sets, reps, rpe, weight, progress, max_name, week
     ["tag1", "Tag 1", "Tag 1 — Push", "A", "1a", "Bench Press",   3, "8",     7, 80,   "x", "Bench Press"],
     ["tag1", "Tag 1", "Tag 1 — Push", "A", "1b", "Band Pull-up",  3, "8",     7, None, "",  ""],
     ["tag1", "Tag 1", "Tag 1 — Push", "B", "2",  "Overhead Press",3, "10",    7, 40,   "x", ""],
     # ... add more rows; same day_id+block = superset; distinct labels (2a,2b); reps always set
+    # Per-week variation (optional): leave `week` empty for the base; week=N overrides week N.
+    #   same exercise + new numbers = per-week target; new/other exercise = independent week.
+    ["tag1", "Tag 1", "Tag 1 — Push", "A", "1a", "Bench Press",   None, "8",  7, 82.5, "",  "", 2],
+    ["tag1", "Tag 1", "Tag 1 — Push", "A", "1a", "Bench Press",   None, "8",  8, 85,   "",  "", 3],
 ]
 
 WARMUPS = [

@@ -175,6 +175,73 @@ def warmups_by_day(rows):
     return out
 
 
+def _group_day_rows(rows):
+    """group one day's exercise rows into ordered blocks of raw entries"""
+    block_order = []
+    blocks = {}
+    for r in rows:
+        block_id = (r.get('block') or 'X').strip()
+        if block_id not in blocks:
+            block_order.append(block_id)
+            blocks[block_id] = []
+        ex_id = slugify(r.get('exercise') or block_id)
+        reps_raw = (r.get('reps') or '').strip()
+        rpe_raw = (r.get('rpe') or '').strip()
+        n_sets = to_num(r.get('sets'))
+        blocks[block_id].append({
+            'id': ex_id,
+            'label': (r.get('label') or '').strip(),
+            'name': (r.get('exercise') or '').strip(),
+            'reps': reps_raw,
+            'rpe': to_num(rpe_raw),
+            'weight': to_num(r.get('weight')),
+            'sets': int(n_sets) if n_sets else None,
+            'per_set_reps': [x.strip() for x in reps_raw.split(',')] if ',' in reps_raw else None,
+            'per_set_rpe': [x.strip() for x in rpe_raw.split(',')] if ',' in rpe_raw else None,
+        })
+    return block_order, blocks
+
+
+def _blocks_from_groups(block_order, blocks_map):
+    """turn grouped raw entries into straight/superset blocks (shared by base + per-week)"""
+    blocks = []
+    for block_id in block_order:
+        exs = blocks_map[block_id]
+        if len(exs) == 1 and (exs[0]['per_set_reps'] or (exs[0]['sets'] and not exs[0]['weight'] and exs[0]['label'] and exs[0]['label'].isdigit())):
+            ex = exs[0]
+            sets = []
+            if ex['per_set_reps']:
+                for i, rp in enumerate(ex['per_set_reps']):
+                    rpe = ex['per_set_rpe'][i] if ex['per_set_rpe'] and i < len(ex['per_set_rpe']) else None
+                    sets.append({'reps': rp, 'rpe': to_num(rpe) if rpe else ex['rpe'], 'weight': ex['weight']})
+            else:
+                for _ in range(ex['sets'] or 1):
+                    sets.append({'reps': ex['reps'], 'rpe': ex['rpe'], 'weight': ex['weight']})
+            blocks.append({
+                'id': block_id, 'type': 'straight',
+                'exercises': [{'id': ex['id'], 'label': ex['label'], 'name': ex['name'], 'sets': sets}],
+            })
+        elif len(exs) == 1:
+            ex = exs[0]
+            sets = []
+            for _ in range(ex['sets'] or 1):
+                sets.append({'reps': ex['reps'], 'rpe': ex['rpe'], 'weight': ex['weight']})
+            blocks.append({
+                'id': block_id, 'type': 'straight',
+                'exercises': [{'id': ex['id'], 'label': ex['label'], 'name': ex['name'], 'sets': sets}],
+            })
+        else:
+            rounds = max((e['sets'] or 1) for e in exs)
+            blocks.append({
+                'id': block_id, 'type': 'superset', 'rounds': rounds,
+                'exercises': [{
+                    'id': e['id'], 'label': e['label'], 'name': e['name'],
+                    'target': {'reps': e['reps'], 'rpe': e['rpe'], 'weight': e['weight']},
+                } for e in exs],
+            })
+    return blocks
+
+
 def build_program(sheets):
     meta = kv_sheet(sheets.get('Program', {}))
     name = meta.get('name') or 'Untitled Program'
@@ -184,117 +251,91 @@ def build_program(sheets):
     ex_rows = table_sheet(sheets.get('Exercises', {}))
     warmups = warmups_by_day(sheets.get('Warmups', {}))
 
-    # preserve first-seen order of days and blocks
-    day_order = []
-    days = {}            # day_id -> {meta, blocks: {block_id: {...}}}
+    # split base rows (no week / week 1) from per-week override rows (week >= 2)
+    base_rows = []
+    week_rows = {}        # day_id -> {N -> [rows]}
     progress_lifts = []
-    max_lifts = {}       # id -> name
-
+    max_lifts = {}
     for r in ex_rows:
         day_id = (r.get('day_id') or '').strip()
         if not day_id:
             continue
-        if day_id not in days:
-            day_order.append(day_id)
-            days[day_id] = {
-                'name': r.get('day_name') or day_id,
-                'title': r.get('day_title') or r.get('day_name') or day_id,
-                'block_order': [],
-                'blocks': {},
-            }
-        d = days[day_id]
-        block_id = (r.get('block') or 'X').strip()
-        if block_id not in d['blocks']:
-            d['block_order'].append(block_id)
-            d['blocks'][block_id] = []
-        ex_id = slugify((pid.split('-')[0] if False else '') + (r.get('exercise') or ''))
-        # make exercise id unique-ish within program but stable: use name slug
-        ex_id = slugify(r.get('exercise') or block_id)
-        reps_raw = (r.get('reps') or '').strip()
-        rpe_raw = (r.get('rpe') or '').strip()
-        weight = to_num(r.get('weight'))
-        n_sets = to_num(r.get('sets'))
-
-        per_set_reps = [x.strip() for x in reps_raw.split(',')] if ',' in reps_raw else None
-        per_set_rpe = [x.strip() for x in rpe_raw.split(',')] if ',' in rpe_raw else None
-
-        entry = {
-            'id': ex_id,
-            'label': (r.get('label') or '').strip(),
-            'name': (r.get('exercise') or '').strip(),
-            'reps': reps_raw,
-            'rpe': to_num(rpe_raw),
-            'weight': weight,
-            'sets': int(n_sets) if n_sets else None,
-            'per_set_reps': per_set_reps,
-            'per_set_rpe': per_set_rpe,
-        }
-        d['blocks'][block_id].append(entry)
-
+        ex_id = slugify(r.get('exercise') or (r.get('block') or 'X'))
         if truthy(r.get('progress_lift', '')) and ex_id not in progress_lifts:
             progress_lifts.append(ex_id)
         mln = (r.get('max_lift_name') or '').strip()
         if mln:
             max_lifts[slugify(mln)] = mln
+        wk = to_num(r.get('week'))
+        if wk and wk >= 2:
+            week_rows.setdefault(day_id, {}).setdefault(int(wk), []).append(r)
+        else:
+            base_rows.append(r)
 
-    # assemble days
+    day_order = []
+    day_groups = {}
+    day_meta = {}
+    for r in base_rows:
+        day_id = (r.get('day_id') or '').strip()
+        if day_id not in day_groups:
+            day_order.append(day_id)
+            day_groups[day_id] = []
+            day_meta[day_id] = {'name': r.get('day_name') or day_id,
+                                'title': r.get('day_title') or r.get('day_name') or day_id}
+        day_groups[day_id].append(r)
+
     out_days = []
     seen_days = set(day_order)
-    # include warmup-only / skipped days that have no exercise rows
     for day_id in list(day_order) + [d for d in warmups if d not in seen_days]:
-        if day_id in seen_days and day_id in days:
-            d = days[day_id]
-        else:
-            d = {'name': day_id, 'title': day_id, 'block_order': [], 'blocks': {}}
-            seen_days.add(day_id)
-        day_obj = {'id': day_id, 'name': d['name'], 'title': d['title']}
+        seen_days.add(day_id)
+        dm = day_meta.get(day_id, {'name': day_id, 'title': day_id})
+        day_obj = {'id': day_id, 'name': dm['name'], 'title': dm['title']}
         wu = warmups.get(day_id, {})
         if wu.get('warmup'):
             day_obj['warmup'] = wu['warmup']
         if wu.get('plyo'):
             day_obj['plyo'] = wu['plyo']
-        blocks = []
-        for block_id in d['block_order']:
-            exs = d['blocks'][block_id]
-            if len(exs) == 1 and (exs[0]['per_set_reps'] or (exs[0]['sets'] and not exs[0]['weight'] and exs[0]['label'] and exs[0]['label'].isdigit())):
-                # straight block with explicit per-set scheme
-                ex = exs[0]
-                sets = []
-                if ex['per_set_reps']:
-                    for i, rp in enumerate(ex['per_set_reps']):
-                        rpe = ex['per_set_rpe'][i] if ex['per_set_rpe'] and i < len(ex['per_set_rpe']) else None
-                        sets.append({'reps': rp, 'rpe': to_num(rpe) if rpe else ex['rpe'], 'weight': ex['weight']})
+        block_order, blocks_map = _group_day_rows(day_groups.get(day_id, []))
+        blocks = _blocks_from_groups(block_order, blocks_map)
+        day_obj['blocks'] = blocks
+        if not blocks and not wu:
+            day_obj['plyo'] = {'title': '—', 'items': []}
+
+        # per-week overrides: target overlay if all rows match base exercises, else independent week
+        wr = week_rows.get(day_id)
+        if wr:
+            base_ex_ids = set()
+            for b in blocks:
+                for ex in b['exercises']:
+                    base_ex_ids.add(ex['id'])
+            for n in sorted(wr):
+                rws = wr[n]
+                all_exist = len(base_ex_ids) > 0 and all(
+                    slugify(r.get('exercise') or (r.get('block') or 'X')) in base_ex_ids for r in rws)
+                if all_exist:
+                    wt = day_obj.setdefault('weekTargets', {})
+                    ov = wt.setdefault(str(n), {})
+                    for r in rws:
+                        ex_id = slugify(r.get('exercise') or (r.get('block') or 'X'))
+                        t = {}
+                        reps_raw = (r.get('reps') or '').strip()
+                        if reps_raw:
+                            t['reps'] = reps_raw
+                        rpe = to_num(r.get('rpe'))
+                        if rpe is not None:
+                            t['rpe'] = rpe
+                        wgt = to_num(r.get('weight'))
+                        if wgt is not None:
+                            t['weight'] = wgt
+                        ov.setdefault(ex_id, {}).update(t)
                 else:
-                    for _ in range(ex['sets'] or 1):
-                        sets.append({'reps': ex['reps'], 'rpe': ex['rpe'], 'weight': ex['weight']})
-                blocks.append({
-                    'id': block_id, 'type': 'straight',
-                    'exercises': [{'id': ex['id'], 'label': ex['label'], 'name': ex['name'], 'sets': sets}],
-                })
-            elif len(exs) == 1:
-                ex = exs[0]
-                sets = []
-                for _ in range(ex['sets'] or 1):
-                    sets.append({'reps': ex['reps'], 'rpe': ex['rpe'], 'weight': ex['weight']})
-                blocks.append({
-                    'id': block_id, 'type': 'straight',
-                    'exercises': [{'id': ex['id'], 'label': ex['label'], 'name': ex['name'], 'sets': sets}],
-                })
-            else:
-                rounds = max((e['sets'] or 1) for e in exs)
-                blocks.append({
-                    'id': block_id, 'type': 'superset', 'rounds': rounds,
-                    'exercises': [{
-                        'id': e['id'], 'label': e['label'], 'name': e['name'],
-                        'target': {'reps': e['reps'], 'rpe': e['rpe'], 'weight': e['weight']},
-                    } for e in exs],
-                })
-        if blocks:
-            day_obj['blocks'] = blocks
-        else:
-            day_obj['blocks'] = []
-            if not wu:
-                day_obj['plyo'] = {'title': '—', 'items': []}
+                    g_order, g_map = _group_day_rows(rws)
+                    wo = day_obj.setdefault('weekOverride', {})
+                    wo[str(n)] = {
+                        'warmup': day_obj.get('warmup') or {'title': 'Warm-up', 'items': []},
+                        'plyo': day_obj.get('plyo') or {'title': 'Plyo / Core', 'items': []},
+                        'blocks': _blocks_from_groups(g_order, g_map),
+                    }
         out_days.append(day_obj)
 
     # default max lifts if none specified

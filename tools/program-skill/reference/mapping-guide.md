@@ -20,6 +20,10 @@ Unklarheit: **nachfragen, nicht raten.**
 - **Schema:** Sätze × Reps × (RPE) × (Gewicht). „3×10" → sets=3, reps=10.
   „4×8 @RPE7 @60kg" → sets=4, reps=8, rpe=7, weight=60.
 - **Pro-Satz-Variation:** „6/5/4" oder „12,10,8" → reps="6,5,4", sets leer.
+- **Wochen-Progression:** Ändern sich Lasten/Reps/RPE pro Woche, gibt es eine
+  Deload-/Peak-Woche oder Wellen (z.B. W1 70 %, W2 75 %, W3 80 %, W4 Deload)? →
+  `week`-Spalte (s. `target-format.md`). Gleiche Übung + neue Zahlen = Ziel pro
+  Woche (Struktur geteilt); andere Übungen in der Woche = eigenständige Woche.
 
 ## 3. Typische Lücken → gezielte Rückfrage
 
@@ -31,6 +35,7 @@ Unklarheit: **nachfragen, nicht raten.**
 | Kein RPE | RPE ist optional → weglassen, nicht erfinden. |
 | Gewicht fehlt | Optional; bei Körpergewicht leer lassen, sonst fragen ob Richtwert gewünscht. |
 | Power- vs. Kraft-Übung unklar | „Ist \<Übung\> explosiv (wenige Reps) oder Hypertrophie?" |
+| Progression nur vage („steigern") | „Welche konkreten Lasten/RPE pro Woche? Oder eine Faustregel (z.B. +2.5 kg/Woche, letzte Woche Deload)?" |
 | Tagesnamen fehlen | Sinnvolle kurze Namen vorschlagen und bestätigen lassen. |
 
 ## 4. IDs vergeben
