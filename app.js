@@ -117,14 +117,44 @@ function targetText(t) {
   return s;
 }
 
-/* iterate every loggable set of a day: cb(block, ex, setIdx, target) */
+/* iterate every loggable set of a day (plyo blocks + main blocks): cb(block, ex, setIdx, target) */
 function forEachSet(day, cb) {
-  for (const block of day.blocks) {
+  const blocks = ((day.plyo && day.plyo.blocks) || []).concat(day.blocks || []);
+  for (const block of blocks) {
     for (const ex of block.exercises) {
       const sets = exerciseSets(ex, block);
       sets.forEach((t, i) => cb(block, ex, i, t));
     }
   }
+}
+
+/* render a list of straight/superset blocks into loggable set-row HTML */
+function blocksToHtml(week, dayId, blocks) {
+  let html = '';
+  (blocks || []).forEach((block, bi) => {
+    const names = block.exercises.map(e => `<span class="bh-ex"><b>${esc(e.label)}</b> ${esc(e.name)}</span>`).join('<span class="bh-plus">+</span>');
+    let rowsHtml = '';
+    if (block.type === 'superset') {
+      const rounds = block.rounds || 3;
+      for (let r = 0; r < rounds; r++) {
+        let groupRows = '';
+        for (const ex of block.exercises) {
+          const t = exerciseSets(ex, block)[r];
+          groupRows += setRowHtml(week, dayId, ex, r, t);
+        }
+        rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
+      }
+    } else {
+      const ex = block.exercises[0];
+      exerciseSets(ex, block).forEach((t, i) => { rowsHtml += setRowHtml(week, dayId, ex, i, t); });
+    }
+    html += `
+      <section class="block band-${bi % 2}">
+        <header class="block-head">${names}</header>
+        ${rowsHtml}
+      </section>`;
+  });
+  return html;
 }
 
 /* exercise lookup by id across program */
@@ -340,40 +370,17 @@ async function renderLog(app, week, dayId) {
       }).join('')}
     </section>` : '';
 
+  const pBlocks = (day.plyo && day.plyo.blocks) || [];
   const pItems = (day.plyo && day.plyo.items) || [];
-  const plyo = pItems.length ? `
+  const plyo = pBlocks.length
+    ? `<div class="section-label">${esc((day.plyo && day.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks)
+    : (pItems.length ? `
     <details class="card info-block">
       <summary>${esc((day.plyo && day.plyo.title) || 'Plyo / Core')}</summary>
       <ul>${pItems.map(i => `<li><strong>${esc(i.name)}</strong> — ${esc(i.scheme)}</li>`).join('')}</ul>
-    </details>` : '';
+    </details>` : '');
 
-  let blocksHtml = '';
-  day.blocks.forEach((block, bi) => {
-    const names = block.exercises.map(e => `<span class="bh-ex"><b>${esc(e.label)}</b> ${esc(e.name)}</span>`).join('<span class="bh-plus">+</span>');
-    let rowsHtml = '';
-
-    if (block.type === 'superset') {
-      const rounds = block.rounds || 3;
-      for (let r = 0; r < rounds; r++) {
-        let groupRows = '';
-        for (const ex of block.exercises) {
-          const t = exerciseSets(ex, block)[r];
-          groupRows += setRowHtml(week, dayId, ex, r, t);
-        }
-        rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
-      }
-    } else {
-      const ex = block.exercises[0];
-      const sets = exerciseSets(ex, block);
-      sets.forEach((t, i) => { rowsHtml += setRowHtml(week, dayId, ex, i, t); });
-    }
-
-    blocksHtml += `
-      <section class="block band-${bi % 2}">
-        <header class="block-head">${names}</header>
-        ${rowsHtml}
-      </section>`;
-  });
+  const blocksHtml = blocksToHtml(week, dayId, day.blocks);
 
   const sess = App.sessionCache;
   app.innerHTML = `
@@ -1197,10 +1204,11 @@ function makeSets(n, t) {
   }));
 }
 
-/* flatten a day's main blocks into a flat, editable item list */
-function itemsFromDay(day) {
+/* flatten a blocks array into a flat, editable item list */
+function itemsFromDay(day) { return itemsFromBlocks(day.blocks || []); }
+function itemsFromBlocks(blocks) {
   const items = [];
-  for (const block of (day.blocks || [])) {
+  for (const block of (blocks || [])) {
     (block.exercises || []).forEach((ex, idx) => {
       if (block.type === 'superset') {
         const t = ex.target || {};
@@ -1258,34 +1266,42 @@ async function renderDayEditor(app, planId, dayIdx) {
   const ctxKey = `${planId}|${dayIdx}`;
   if (!App.dayCtx || App.dayCtx.key !== ctxKey) {
     App.dayCtx = { key: ctxKey, planId, dayIdx };
-    App.dayItems = itemsFromDay(day);
-    App.dayWarmup = ((day.warmup && day.warmup.items) || []).map(it => typeof it === 'string' ? it : (it.name || ''));
+    App.daySections = {
+      warmup: ((day.warmup && day.warmup.items) || []).map(it => typeof it === 'string' ? it : (it.name || '')),
+      plyo: itemsFromBlocks((day.plyo && day.plyo.blocks) || []),
+      main: itemsFromBlocks(day.blocks || []),
+    };
   }
-  const items = App.dayItems;
+  const S = App.daySections;
   $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
   $('#topbar-back').hidden = false;
 
   const rpeOpts = sel => { let h = '<option value="">RPE</option>'; for (let v = 6; v <= 10; v += 0.5) h += `<option value="${v}" ${sel === v ? 'selected' : ''}>${v}</option>`; return h; };
-  const rows = items.map((it, i) => `
+  const exRows = (arr, sec) => arr.map((it, i) => `
     <div class="ex-item">
       <div class="ex-item-top">
         <span class="ex-item-name">${esc(it.name)}</span>
         <span class="ex-item-tools">
-          <button type="button" class="ic up" data-i="${i}" aria-label="hoch">↑</button>
-          <button type="button" class="ic down" data-i="${i}" aria-label="runter">↓</button>
-          <button type="button" class="ic rm" data-i="${i}" aria-label="entfernen">✕</button>
+          <button type="button" class="ic up" data-sec="${sec}" data-i="${i}" aria-label="hoch">↑</button>
+          <button type="button" class="ic down" data-sec="${sec}" data-i="${i}" aria-label="runter">↓</button>
+          <button type="button" class="ic rm" data-sec="${sec}" data-i="${i}" aria-label="entfernen">✕</button>
         </span>
       </div>
-      ${i > 0 ? `<label class="ss-toggle"><input type="checkbox" class="f-ss" data-i="${i}" ${it.ss ? 'checked' : ''}> Superset mit vorheriger</label>` : ''}
+      ${i > 0 ? `<label class="ss-toggle"><input type="checkbox" class="f-ss" data-sec="${sec}" data-i="${i}" ${it.ss ? 'checked' : ''}> Superset mit vorheriger</label>` : ''}
       <div class="ex-item-fields">
-        <label>Sätze<span class="mini-step"><button type="button" class="ic sdec" data-i="${i}">−</button><b class="sets-v">${it.sets}</b><button type="button" class="ic sinc" data-i="${i}">+</button></span></label>
-        <label>Reps<input type="text" class="f-er" data-i="${i}" value="${esc(it.reps)}" placeholder="8"></label>
-        <label>RPE<select class="f-erpe" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
-        <label>kg<input type="number" class="f-ewt" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
+        <label>Sätze<span class="mini-step"><button type="button" class="ic sdec" data-sec="${sec}" data-i="${i}">−</button><b>${it.sets}</b><button type="button" class="ic sinc" data-sec="${sec}" data-i="${i}">+</button></span></label>
+        <label>Reps<input type="text" class="f-er" data-sec="${sec}" data-i="${i}" value="${esc(it.reps)}" placeholder="8"></label>
+        <label>RPE<select class="f-erpe" data-sec="${sec}" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
+        <label>kg<input type="number" class="f-ewt" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
       </div>
     </div>`).join('');
-
-  const wuRows = App.dayWarmup.map((it, i) =>
+  const exSection = (title, sec, arr) => `
+    <div class="card section-card">
+      <h2>${title}</h2>
+      <div class="day-ex-list">${exRows(arr, sec) || '<p class="muted hint">Noch keine Übungen.</p>'}</div>
+      <button type="button" class="btn block add-ex" data-sec="${sec}">+ Übung hinzufügen</button>
+    </div>`;
+  const wuRows = S.warmup.map((it, i) =>
     `<div class="wu-edit-row"><input type="text" class="f-wu" data-i="${i}" value="${esc(it)}" placeholder="z.B. Rudern 5 min"><button type="button" class="ic wu-rm" data-i="${i}" aria-label="entfernen">✕</button></div>`).join('');
   app.innerHTML = `
     <div class="card section-card">
@@ -1294,33 +1310,36 @@ async function renderDayEditor(app, planId, dayIdx) {
       <div class="wu-edit-list">${wuRows}</div>
       <div class="wu-add-row"><input type="text" id="wu-new" placeholder="Drill/Übung hinzufügen…"><button type="button" class="btn small" id="wu-add">+</button></div>
     </div>
-    <p class="muted hint">Hauptteil — „${esc(day.name)}". Plyometrie folgt im nächsten Update.</p>
-    <div class="day-ex-list">${rows || '<div class="card"><p class="muted">Noch keine Übungen — füge unten welche hinzu.</p></div>'}</div>
-    <a class="btn block" href="#/plans/pick">+ Übung hinzufügen</a>
+    ${exSection('Plyometrie &amp; Priming', 'plyo', S.plyo)}
+    ${exSection('Hauptteil', 'main', S.main)}
     <div class="btn-row">
       <button type="button" class="btn accent" id="day-save">Speichern</button>
       <a class="btn" href="#/plans/edit/${planId}">Zurück</a>
     </div>`;
 
   const reRender = () => renderDayEditor(app, planId, dayIdx);
-  $$('.f-wu').forEach(inp => inp.addEventListener('input', () => { App.dayWarmup[+inp.dataset.i] = inp.value; }));
-  $$('.wu-rm').forEach(b => b.addEventListener('click', () => { App.dayWarmup.splice(+b.dataset.i, 1); reRender(); }));
-  const addWu = () => { const el = $('#wu-new'); const v = el.value.trim(); if (v) { App.dayWarmup.push(v); reRender(); } };
+  const arrOf = el => S[el.dataset.sec];
+  $$('.f-wu').forEach(inp => inp.addEventListener('input', () => { S.warmup[+inp.dataset.i] = inp.value; }));
+  $$('.wu-rm').forEach(b => b.addEventListener('click', () => { S.warmup.splice(+b.dataset.i, 1); reRender(); }));
+  const addWu = () => { const el = $('#wu-new'); const v = el.value.trim(); if (v) { S.warmup.push(v); reRender(); } };
   $('#wu-add').addEventListener('click', addWu);
   $('#wu-new').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addWu(); } });
-  $$('.f-ss').forEach(c => c.addEventListener('change', () => { items[+c.dataset.i].ss = c.checked; }));
-  $$('.f-er').forEach(inp => inp.addEventListener('input', () => { items[+inp.dataset.i].reps = inp.value; }));
-  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { items[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); }));
-  $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { items[+inp.dataset.i].weight = inp.value === '' ? null : Number(inp.value); }));
-  $$('.sinc').forEach(b => b.addEventListener('click', () => { const it = items[+b.dataset.i]; it.sets = Math.min(10, it.sets + 1); reRender(); }));
-  $$('.sdec').forEach(b => b.addEventListener('click', () => { const it = items[+b.dataset.i]; it.sets = Math.max(1, it.sets - 1); reRender(); }));
-  $$('.rm').forEach(b => b.addEventListener('click', () => { items.splice(+b.dataset.i, 1); reRender(); }));
-  $$('.up').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.i; if (i > 0) { [items[i - 1], items[i]] = [items[i], items[i - 1]]; reRender(); } }));
-  $$('.down').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.i; if (i < items.length - 1) { [items[i + 1], items[i]] = [items[i], items[i + 1]]; reRender(); } }));
+  $$('.add-ex').forEach(b => b.addEventListener('click', () => { App.pickSection = b.dataset.sec; location.hash = '#/plans/pick'; }));
+  $$('.f-ss').forEach(c => c.addEventListener('change', () => { arrOf(c)[+c.dataset.i].ss = c.checked; }));
+  $$('.f-er').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].reps = inp.value; }));
+  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { arrOf(s)[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); }));
+  $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].weight = inp.value === '' ? null : Number(inp.value); }));
+  $$('.sinc').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.min(10, it.sets + 1); reRender(); }));
+  $$('.sdec').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.max(1, it.sets - 1); reRender(); }));
+  $$('.rm').forEach(b => b.addEventListener('click', () => { arrOf(b).splice(+b.dataset.i, 1); reRender(); }));
+  $$('.up').forEach(b => b.addEventListener('click', () => { const a = arrOf(b), i = +b.dataset.i; if (i > 0) { [a[i - 1], a[i]] = [a[i], a[i - 1]]; reRender(); } }));
+  $$('.down').forEach(b => b.addEventListener('click', () => { const a = arrOf(b), i = +b.dataset.i; if (i < a.length - 1) { [a[i + 1], a[i]] = [a[i], a[i + 1]]; reRender(); } }));
   $('#day-save').addEventListener('click', async () => {
     const p = plan.program;
-    day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: App.dayWarmup.filter(s => s && s.trim()) };
-    day.blocks = buildBlocksFromItems(items);
+    day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: S.warmup.filter(s => s && s.trim()) };
+    if (S.plyo.length) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: buildBlocksFromItems(S.plyo) };
+    else if (!(day.plyo && day.plyo.items && day.plyo.items.length)) day.plyo = { title: (day.plyo && day.plyo.title) || 'Plyometrie & Priming', blocks: [] };
+    day.blocks = buildBlocksFromItems(S.main);
     plan.updatedAt = Date.now();
     await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
     if (await activePlanId() === plan.id) { await dbPut('kv', { key: 'program', value: p }); App.program = p; await harvestExercises(p); }
@@ -1334,9 +1353,10 @@ async function renderExercisePicker(app) {
   $('#topbar-title').textContent = 'Übung wählen';
   $('#topbar-back').hidden = false;
   const ctx = App.dayCtx;
-  if (!ctx || !App.dayItems) { location.hash = '#/plans'; return; }
+  if (!ctx || !App.daySections) { location.hash = '#/plans'; return; }
   const back = `#/plans/day/${ctx.planId}/${ctx.dayIdx}`;
-  const add = (exId, name) => { App.dayItems.push({ exId, name, sets: 3, reps: '', rpe: null, weight: null, ss: false }); location.hash = back; };
+  const sec = App.pickSection || 'main';
+  const add = (exId, name) => { App.daySections[sec].push({ exId, name, sets: 3, reps: '', rpe: null, weight: null, ss: false }); location.hash = back; };
   const harvested = (await dbGetAll('exercises')).map(e => ({ id: e.id, name: e.name }));
 
   let groups = '';
