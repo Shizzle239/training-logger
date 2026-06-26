@@ -38,6 +38,7 @@ Eine Zeile = eine geloggte Übung. Spalten:
 | weight         | Richtgewicht kg (Zahl, optional) |
 | progress_lift  | `x` → Übung erscheint im Progress-Tab als Chart |
 | max_lift_name  | Name → Lift erscheint im Maxes-Tab |
+| week           | leer/`1` = Basis (alle Wochen); `2`, `3`, … = Override nur für diese Woche (s. u.) |
 
 **Supersätze / Trisätze:** mehrere Zeilen mit **gleichem `day_id` + `block`**.
 Sie werden Runde für Runde abgewechselt (2a → 2b → 2a → 2b …). Eine einzelne
@@ -45,6 +46,22 @@ Zeile in einem Block = Straight Sets.
 
 **Unterschiedliche Reps pro Satz** (z. B. Hang Power Shrug 6/5/4):
 `reps = "6,5,4"`, `rpe = "6,7,8"`, `sets` leer lassen.
+
+**Wochenweise Variation (`week`-Spalte, optional).** Leer oder `1` = Basis, gilt für
+alle Wochen. `week = 2`, `3`, … = Override **nur** für diese Woche — zwei Modi, automatisch
+erkannt:
+
+- **Gleiche Übung, neue Zahlen** — eine `week=N`-Zeile mit demselben Übungsnamen wie in
+  der Basis, aber anderen `reps`/`rpe`/`weight`. Nur die Zahlen ändern sich für Woche N,
+  die Struktur bleibt geteilt. Ideal für Last-/RPE-Progression. Nur die Felder, die du
+  ausfüllst, werden überschrieben (Rest erbt die Basis). Beispiel: Back Squats Woche 2 auf
+  102.5 kg, Woche 3 auf 105 kg — siehe die letzten zwei Zeilen in der Vorlage.
+- **Neue/andere Übungen** — listest du in `week=N` mindestens eine Übung auf, die es in der
+  Basis **nicht** gibt, wird die ganze Woche N für diesen Tag **eigenständig** und komplett
+  aus den `week=N`-Zeilen gebaut (eigene Übungen/Struktur, z. B. eine Deload-Woche).
+
+Beides landet in der App genau wie der In-App-Planbuilder (Zielwerte pro Woche bzw.
+eigenständige Wochen) und ist dort weiter editierbar.
 
 **Übersprungener Tag** (Taper-Ruhetag): in **Warmups** einen Eintrag mit der
 Notiz anlegen und in **Exercises keine** Zeilen für diesen `day_id` — die App

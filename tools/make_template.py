@@ -21,6 +21,9 @@ ANLEITUNG = [
     ["   - Unterschiedliche reps pro Satz (z.B. 6/5/4): reps='6,5,4', rpe='6,7,8' (sets leer lassen)."],
     ["   - progress_lift = x  -> Übung erscheint im Progress-Tab als Chart."],
     ["   - max_lift_name      -> Lift erscheint im Maxes-Tab (z.B. 'Back Squat')."],
+    ["   - week = leer/1 -> Basis (gilt fuer ALLE Wochen). week = 2,3,... -> nur diese Woche:"],
+    ["       * gleiche Uebung + neue reps/rpe/weight = Ziel-Override pro Woche (Struktur bleibt)."],
+    ["       * neue/andere Uebungen in der Woche  = diese Woche wird eigenstaendig (eigene Struktur)."],
     ["3) Sheet 'Warmups' (optional): Warm-up & Plyo-Block pro Tag. kind = warmup oder plyo."],
     ["   - Plyo-Einträge im Format 'Name :: schema', z.B. 'Reverse Pogos :: 20 reps · 30s · 2 Runden'."],
     ["4) Übersprungener Tag (z.B. Taper-Ruhetag): in Warmups einen Eintrag mit der Notiz anlegen"],
@@ -66,7 +69,7 @@ PROGRAM = [
 ]
 
 EX_HEADER = ["day_id", "day_name", "day_title", "block", "label", "exercise",
-             "sets", "reps", "rpe", "weight", "progress_lift", "max_lift_name"]
+             "sets", "reps", "rpe", "weight", "progress_lift", "max_lift_name", "week"]
 EXERCISES = [
     EX_HEADER,
     # Day 1 Lower
@@ -81,6 +84,10 @@ EXERCISES = [
     ["upper", "Upper", "Day 2 — Upper", "B", "3a", "Lateral Raise", 3, "15", 6, None, "", ""],
     ["upper", "Upper", "Day 2 — Upper", "B", "3b", "Rear Delt Fly", 3, "15", 6, None, "", ""],
     ["upper", "Upper", "Day 2 — Upper", "B", "3c", "Tricep Dips", 3, "15", 6, None, "x", ""],
+    # Beispiel wochenweise Progression (week-Spalte): gleiche Uebung + neue Zahlen = Ziel-Override.
+    # Back Squats: Woche 2 schwerer, Woche 3 noch schwerer (Struktur bleibt fuer alle Wochen gleich).
+    ["lower", "Lower", "Day 1 — Lower", "B", "2a", "Back Squats", None, "3", 8, 102.5, "", "", 2],
+    ["lower", "Lower", "Day 1 — Lower", "B", "2a", "Back Squats", None, "3", 8.5, 105, "", "", 3],
 ]
 
 WARMUPS = [
