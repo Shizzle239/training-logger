@@ -329,16 +329,22 @@ async function renderLog(app, week, dayId) {
   }
   App.sessionCache = await dbGet('sessions', sessionKey(week, dayId)) || null;
 
-  const warmup = day.warmup ? `
-    <details class="card info-block">
-      <summary>${esc(day.warmup.title || 'Warm-up')}</summary>
-      <ul>${day.warmup.items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>
-    </details>` : '';
+  const wDone = (App.sessionCache && App.sessionCache.warmupDone) || {};
+  const wItems = (day.warmup && day.warmup.items) || [];
+  const warmup = wItems.length ? `
+    <section class="card warmup-block">
+      <header class="wu-head">${esc((day.warmup && day.warmup.title) || 'Warm-up')}</header>
+      ${wItems.map((it, i) => {
+        const txt = typeof it === 'string' ? it : `${(it && it.name) || ''}${it && it.scheme ? ' — ' + it.scheme : ''}`;
+        return `<label class="wu-item${wDone[i] ? ' on' : ''}"><input type="checkbox" class="wu-check" data-i="${i}" ${wDone[i] ? 'checked' : ''}><span>${esc(txt)}</span></label>`;
+      }).join('')}
+    </section>` : '';
 
-  const plyo = day.plyo ? `
+  const pItems = (day.plyo && day.plyo.items) || [];
+  const plyo = pItems.length ? `
     <details class="card info-block">
-      <summary>${esc(day.plyo.title || 'Plyo / Core')}</summary>
-      <ul>${day.plyo.items.map(i => `<li><strong>${esc(i.name)}</strong> — ${esc(i.scheme)}</li>`).join('')}</ul>
+      <summary>${esc((day.plyo && day.plyo.title) || 'Plyo / Core')}</summary>
+      <ul>${pItems.map(i => `<li><strong>${esc(i.name)}</strong> — ${esc(i.scheme)}</li>`).join('')}</ul>
     </details>` : '';
 
   let blocksHtml = '';
@@ -398,6 +404,14 @@ async function renderLog(app, week, dayId) {
     updatePrefillChip(row, week, dayId);
     updateRowStatus(row);
   });
+
+  $$('.wu-check').forEach(cb => cb.addEventListener('change', async () => {
+    const s = await ensureSession(week, dayId);
+    s.warmupDone = s.warmupDone || {};
+    if (cb.checked) s.warmupDone[cb.dataset.i] = true; else delete s.warmupDone[cb.dataset.i];
+    await dbPut('sessions', s);
+    cb.closest('.wu-item').classList.toggle('on', cb.checked);
+  }));
 }
 
 function rpeOptionsHtml(selected) {
@@ -1245,6 +1259,7 @@ async function renderDayEditor(app, planId, dayIdx) {
   if (!App.dayCtx || App.dayCtx.key !== ctxKey) {
     App.dayCtx = { key: ctxKey, planId, dayIdx };
     App.dayItems = itemsFromDay(day);
+    App.dayWarmup = ((day.warmup && day.warmup.items) || []).map(it => typeof it === 'string' ? it : (it.name || ''));
   }
   const items = App.dayItems;
   $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
@@ -1270,8 +1285,16 @@ async function renderDayEditor(app, planId, dayIdx) {
       </div>
     </div>`).join('');
 
+  const wuRows = App.dayWarmup.map((it, i) =>
+    `<div class="wu-edit-row"><input type="text" class="f-wu" data-i="${i}" value="${esc(it)}" placeholder="z.B. Rudern 5 min"><button type="button" class="ic wu-rm" data-i="${i}" aria-label="entfernen">✕</button></div>`).join('');
   app.innerHTML = `
-    <p class="muted hint">Hauptteil — „${esc(day.name)}". Aufwärmen &amp; Plyometrie folgen im nächsten Update.</p>
+    <div class="card section-card">
+      <h2>Aufwärmen &amp; Mobility</h2>
+      <p class="muted hint">Checkliste — im Training zum Abhaken.</p>
+      <div class="wu-edit-list">${wuRows}</div>
+      <div class="wu-add-row"><input type="text" id="wu-new" placeholder="Drill/Übung hinzufügen…"><button type="button" class="btn small" id="wu-add">+</button></div>
+    </div>
+    <p class="muted hint">Hauptteil — „${esc(day.name)}". Plyometrie folgt im nächsten Update.</p>
     <div class="day-ex-list">${rows || '<div class="card"><p class="muted">Noch keine Übungen — füge unten welche hinzu.</p></div>'}</div>
     <a class="btn block" href="#/plans/pick">+ Übung hinzufügen</a>
     <div class="btn-row">
@@ -1280,6 +1303,11 @@ async function renderDayEditor(app, planId, dayIdx) {
     </div>`;
 
   const reRender = () => renderDayEditor(app, planId, dayIdx);
+  $$('.f-wu').forEach(inp => inp.addEventListener('input', () => { App.dayWarmup[+inp.dataset.i] = inp.value; }));
+  $$('.wu-rm').forEach(b => b.addEventListener('click', () => { App.dayWarmup.splice(+b.dataset.i, 1); reRender(); }));
+  const addWu = () => { const el = $('#wu-new'); const v = el.value.trim(); if (v) { App.dayWarmup.push(v); reRender(); } };
+  $('#wu-add').addEventListener('click', addWu);
+  $('#wu-new').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addWu(); } });
   $$('.f-ss').forEach(c => c.addEventListener('change', () => { items[+c.dataset.i].ss = c.checked; }));
   $$('.f-er').forEach(inp => inp.addEventListener('input', () => { items[+inp.dataset.i].reps = inp.value; }));
   $$('.f-erpe').forEach(s => s.addEventListener('change', () => { items[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); }));
@@ -1291,6 +1319,7 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.down').forEach(b => b.addEventListener('click', () => { const i = +b.dataset.i; if (i < items.length - 1) { [items[i + 1], items[i]] = [items[i], items[i + 1]]; reRender(); } }));
   $('#day-save').addEventListener('click', async () => {
     const p = plan.program;
+    day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: App.dayWarmup.filter(s => s && s.trim()) };
     day.blocks = buildBlocksFromItems(items);
     plan.updatedAt = Date.now();
     await dbPut('plans', { id: plan.id, name: plan.name, createdAt: plan.createdAt, updatedAt: plan.updatedAt, program: p });
