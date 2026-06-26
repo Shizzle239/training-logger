@@ -331,6 +331,9 @@ button { font: inherit; color: inherit; }
 .rest-pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 12px; padding: 5px 9px; cursor: pointer; }
 .rest-pre.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .f-rest-sec { width: 60px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 13px; padding: 5px 8px; }
+.rpe-sugg { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.rpe-sugg b { color: var(--text); }
+.kg-apply { background: var(--accent-dim); border: 1px solid var(--accent); border-radius: 7px; color: var(--accent); font-size: 12px; font-weight: 600; padding: 5px 10px; cursor: pointer; flex: none; }
 
 .archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
 .archive-item:last-child { border-bottom: none; }

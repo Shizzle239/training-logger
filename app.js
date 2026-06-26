@@ -1205,6 +1205,13 @@ function makeSets(n, t) {
   }));
 }
 
+/* Epley/RIR estimate: target weight for `reps` at `rpe`, given a 1RM (reps-to-failure = reps + RIR) */
+function rpeWeight(oneRM, reps, rpe) {
+  if (!(oneRM > 0) || !(reps > 0) || rpe == null) return null;
+  const total = reps + (10 - rpe);
+  return total <= 1 ? oneRM : oneRM / (1 + total / 30);
+}
+
 /* flatten a blocks array into a flat, editable item list */
 function itemsFromDay(day) { return itemsFromBlocks(day.blocks || []); }
 function itemsFromBlocks(blocks) {
@@ -1273,13 +1280,31 @@ async function renderDayEditor(app, planId, dayIdx) {
       plyo: itemsFromBlocks((day.plyo && day.plyo.blocks) || []),
       main: itemsFromBlocks(day.blocks || []),
     };
+    const maxMap = new Map((await dbGetAll('maxes')).map(m => [m.id, m.oneRM]));
+    const nm = new Map();
+    for (const l of [...(App.program.maxLifts || []), ...((plan.program && plan.program.maxLifts) || [])]) {
+      const v = maxMap.get(l.id);
+      if (v != null && l.name) nm.set(l.name.toLowerCase(), v);
+    }
+    App.dayMaxes = nm;
   }
   const S = App.daySections;
   $('#topbar-title').textContent = day.name || `Tag ${dayIdx + 1}`;
   $('#topbar-back').hidden = false;
 
   const rpeOpts = sel => { let h = '<option value="">RPE</option>'; for (let v = 6; v <= 10; v += 0.5) h += `<option value="${v}" ${sel === v ? 'selected' : ''}>${v}</option>`; return h; };
-  const exRows = (arr, sec) => arr.map((it, i) => `
+  const lookup1RM = name => {
+    const n = (name || '').toLowerCase(); const m = App.dayMaxes || new Map();
+    if (m.has(n)) return m.get(n);
+    for (const [k, v] of m) { if (k && (k.includes(n) || n.includes(k))) return v; }
+    return null;
+  };
+  const exRows = (arr, sec) => arr.map((it, i) => {
+    const auto1 = lookup1RM(it.name);
+    const eff1 = it.oneRM != null ? it.oneRM : auto1;
+    const repsN = firstNumber(it.reps);
+    const sugg = (eff1 > 0 && repsN > 0 && it.rpe != null) ? roundHalf(rpeWeight(eff1, repsN, it.rpe)) : null;
+    return `
     <div class="ex-item">
       <div class="ex-item-top">
         <span class="ex-item-name">${esc(it.name)}</span>
@@ -1295,7 +1320,9 @@ async function renderDayEditor(app, planId, dayIdx) {
         <label>Reps<input type="text" class="f-er" data-sec="${sec}" data-i="${i}" value="${esc(it.reps)}" placeholder="8"></label>
         <label>RPE<select class="f-erpe" data-sec="${sec}" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
         <label>kg<input type="number" class="f-ewt" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
+        <label>1RM<input type="number" class="f-e1rm" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.oneRM != null ? it.oneRM : ''}" placeholder="${auto1 != null ? fmtNum(auto1) : 'opt'}"></label>
       </div>
+      ${sugg != null ? `<div class="rpe-sugg"><span>RPE ${it.rpe} × ${esc(it.reps)} ≈ <b>${fmtNum(sugg)} kg</b></span><button type="button" class="kg-apply" data-sec="${sec}" data-i="${i}" data-v="${sugg}">Übernehmen</button></div>` : ''}
       <div class="ex-rest${it.rest && it.rest.auto ? ' on' : ''}">
         <label class="rest-toggle"><input type="checkbox" class="f-rest-auto" data-sec="${sec}" data-i="${i}" ${it.rest && it.rest.auto ? 'checked' : ''}> Auto-Pause</label>
         <span class="rest-presets">
@@ -1303,7 +1330,8 @@ async function renderDayEditor(app, planId, dayIdx) {
           <input type="number" class="f-rest-sec" data-sec="${sec}" data-i="${i}" value="${it.rest ? it.rest.sec : 90}" min="5" step="5" aria-label="Sekunden">
         </span>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const exSection = (title, sec, arr) => `
     <div class="card section-card">
       <h2>${title}</h2>
@@ -1336,7 +1364,7 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.add-ex').forEach(b => b.addEventListener('click', () => { App.pickSection = b.dataset.sec; location.hash = '#/plans/pick'; }));
   $$('.f-ss').forEach(c => c.addEventListener('change', () => { arrOf(c)[+c.dataset.i].ss = c.checked; }));
   $$('.f-er').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].reps = inp.value; }));
-  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { arrOf(s)[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); }));
+  $$('.f-erpe').forEach(s => s.addEventListener('change', () => { arrOf(s)[+s.dataset.i].rpe = s.value === '' ? null : Number(s.value); reRender(); }));
   $$('.f-ewt').forEach(inp => inp.addEventListener('input', () => { arrOf(inp)[+inp.dataset.i].weight = inp.value === '' ? null : Number(inp.value); }));
   $$('.sinc').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.min(10, it.sets + 1); reRender(); }));
   $$('.sdec').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.sets = Math.max(1, it.sets - 1); reRender(); }));
@@ -1346,6 +1374,8 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.f-rest-auto').forEach(c => c.addEventListener('change', () => { const it = arrOf(c)[+c.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; it.rest.auto = c.checked; reRender(); }));
   $$('.rest-pre').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; it.rest.sec = Number(b.dataset.s); it.rest.auto = true; reRender(); }));
   $$('.f-rest-sec').forEach(inp => inp.addEventListener('input', () => { const it = arrOf(inp)[+inp.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; const v = Number(inp.value); if (v > 0) it.rest.sec = v; }));
+  $$('.f-e1rm').forEach(inp => inp.addEventListener('change', () => { const it = arrOf(inp)[+inp.dataset.i]; it.oneRM = inp.value === '' ? null : Number(inp.value); reRender(); }));
+  $$('.kg-apply').forEach(b => b.addEventListener('click', () => { arrOf(b)[+b.dataset.i].weight = Number(b.dataset.v); reRender(); }));
   $('#day-save').addEventListener('click', async () => {
     const p = plan.program;
     day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: S.warmup.filter(s => s && s.trim()) };
