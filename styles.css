@@ -323,6 +323,14 @@ button { font: inherit; color: inherit; }
 .wu-add-row { display: flex; gap: 8px; margin-top: 6px; }
 .wu-add-row input { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; color: var(--text); font-size: 14px; padding: 8px 10px; }
 .section-label { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 2px 6px; }
+.ex-rest { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.rest-toggle { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+.rest-toggle input { accent-color: var(--accent); }
+.rest-presets { display: none; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.ex-rest.on .rest-presets { display: flex; }
+.rest-pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 12px; padding: 5px 9px; cursor: pointer; }
+.rest-pre.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.f-rest-sec { width: 60px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-size: 13px; padding: 5px 8px; }
 
 .archive-item { border-bottom: 1px solid rgba(42, 47, 58, 0.6); padding: 4px 0; }
 .archive-item:last-child { border-bottom: none; }

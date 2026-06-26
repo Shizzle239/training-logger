@@ -140,13 +140,13 @@ function blocksToHtml(week, dayId, blocks) {
         let groupRows = '';
         for (const ex of block.exercises) {
           const t = exerciseSets(ex, block)[r];
-          groupRows += setRowHtml(week, dayId, ex, r, t);
+          groupRows += setRowHtml(week, dayId, ex, r, t, block.rest);
         }
         rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
       }
     } else {
       const ex = block.exercises[0];
-      exerciseSets(ex, block).forEach((t, i) => { rowsHtml += setRowHtml(week, dayId, ex, i, t); });
+      exerciseSets(ex, block).forEach((t, i) => { rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest); });
     }
     html += `
       <section class="block band-${bi % 2}">
@@ -429,13 +429,14 @@ function rpeOptionsHtml(selected) {
   return html;
 }
 
-function setRowHtml(week, dayId, ex, setIdx, target) {
+function setRowHtml(week, dayId, ex, setIdx, target, rest) {
   const key = setKey(week, dayId, ex.id, setIdx);
   return `
   <div class="set-row" data-key="${key}" data-week="${week}" data-day="${esc(dayId)}"
        data-ex="${esc(ex.id)}" data-set="${setIdx}"
        data-treps="${esc(target.reps)}" data-trpe="${target.rpe != null ? target.rpe : ''}"
-       data-twt="${target.weight != null ? target.weight : ''}">
+       data-twt="${target.weight != null ? target.weight : ''}"
+       data-rest-auto="${rest && rest.auto ? '1' : '0'}" data-rest-sec="${rest && rest.sec ? rest.sec : 90}">
     <div class="set-line1">
       <span class="ex-label">${esc(ex.label)}</span>
       <span class="ex-name">${esc(ex.name)}</span>
@@ -1209,18 +1210,19 @@ function itemsFromDay(day) { return itemsFromBlocks(day.blocks || []); }
 function itemsFromBlocks(blocks) {
   const items = [];
   for (const block of (blocks || [])) {
+    const rest = { auto: !!(block.rest && block.rest.auto), sec: (block.rest && block.rest.sec) || 90 };
     (block.exercises || []).forEach((ex, idx) => {
       if (block.type === 'superset') {
         const t = ex.target || {};
         items.push({ exId: ex.id, name: ex.name, sets: block.rounds || 3,
           reps: t.reps != null ? String(t.reps) : '', rpe: t.rpe != null ? t.rpe : null,
-          weight: t.weight != null ? t.weight : null, ss: idx > 0 });
+          weight: t.weight != null ? t.weight : null, ss: idx > 0, rest: { auto: rest.auto, sec: rest.sec } });
       } else {
         const sets = ex.sets || [];
         const t = sets[0] || {};
         items.push({ exId: ex.id, name: ex.name, sets: sets.length || 3,
           reps: t.reps != null ? String(t.reps) : '', rpe: t.rpe != null ? t.rpe : null,
-          weight: t.weight != null ? t.weight : null, ss: false });
+          weight: t.weight != null ? t.weight : null, ss: false, rest: { auto: rest.auto, sec: rest.sec } });
       }
     });
   }
@@ -1236,7 +1238,7 @@ function buildBlocksFromItems(items) {
     if (it.ss && cur && i > 0) {
       if (cur.type === 'straight') {
         const first = cur.exercises[0];
-        cur = { id: cur.id, type: 'superset', rounds: (first.sets && first.sets.length) || it.sets || 3,
+        cur = { id: cur.id, type: 'superset', rounds: (first.sets && first.sets.length) || it.sets || 3, rest: cur.rest,
           exercises: [{ id: first.id, label: '', name: first.name, target: first._t },
                       { id: it.exId, label: '', name: it.name, target }] };
       } else {
@@ -1244,7 +1246,7 @@ function buildBlocksFromItems(items) {
       }
     } else {
       if (cur) blocks.push(cur);
-      cur = { id: genId('blk'), type: 'straight',
+      cur = { id: genId('blk'), type: 'straight', rest: { auto: !!(it.rest && it.rest.auto), sec: (it.rest && it.rest.sec) || 90 },
         exercises: [{ id: it.exId, label: '', name: it.name, sets: makeSets(it.sets, target), _t: target }] };
     }
   });
@@ -1294,6 +1296,13 @@ async function renderDayEditor(app, planId, dayIdx) {
         <label>RPE<select class="f-erpe" data-sec="${sec}" data-i="${i}">${rpeOpts(it.rpe)}</select></label>
         <label>kg<input type="number" class="f-ewt" data-sec="${sec}" data-i="${i}" step="2.5" value="${it.weight != null ? it.weight : ''}" placeholder="opt"></label>
       </div>
+      <div class="ex-rest${it.rest && it.rest.auto ? ' on' : ''}">
+        <label class="rest-toggle"><input type="checkbox" class="f-rest-auto" data-sec="${sec}" data-i="${i}" ${it.rest && it.rest.auto ? 'checked' : ''}> Auto-Pause</label>
+        <span class="rest-presets">
+          ${[30, 45, 60, 90, 120, 240].map(s => `<button type="button" class="rest-pre${it.rest && it.rest.sec === s ? ' on' : ''}" data-sec="${sec}" data-i="${i}" data-s="${s}">${s}</button>`).join('')}
+          <input type="number" class="f-rest-sec" data-sec="${sec}" data-i="${i}" value="${it.rest ? it.rest.sec : 90}" min="5" step="5" aria-label="Sekunden">
+        </span>
+      </div>
     </div>`).join('');
   const exSection = (title, sec, arr) => `
     <div class="card section-card">
@@ -1334,6 +1343,9 @@ async function renderDayEditor(app, planId, dayIdx) {
   $$('.rm').forEach(b => b.addEventListener('click', () => { arrOf(b).splice(+b.dataset.i, 1); reRender(); }));
   $$('.up').forEach(b => b.addEventListener('click', () => { const a = arrOf(b), i = +b.dataset.i; if (i > 0) { [a[i - 1], a[i]] = [a[i], a[i - 1]]; reRender(); } }));
   $$('.down').forEach(b => b.addEventListener('click', () => { const a = arrOf(b), i = +b.dataset.i; if (i < a.length - 1) { [a[i + 1], a[i]] = [a[i], a[i + 1]]; reRender(); } }));
+  $$('.f-rest-auto').forEach(c => c.addEventListener('change', () => { const it = arrOf(c)[+c.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; it.rest.auto = c.checked; reRender(); }));
+  $$('.rest-pre').forEach(b => b.addEventListener('click', () => { const it = arrOf(b)[+b.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; it.rest.sec = Number(b.dataset.s); it.rest.auto = true; reRender(); }));
+  $$('.f-rest-sec').forEach(inp => inp.addEventListener('input', () => { const it = arrOf(inp)[+inp.dataset.i]; it.rest = it.rest || { auto: false, sec: 90 }; const v = Number(inp.value); if (v > 0) it.rest.sec = v; }));
   $('#day-save').addEventListener('click', async () => {
     const p = plan.program;
     day.warmup = { title: (day.warmup && day.warmup.title) || 'Aufwärmen & Mobility', items: S.warmup.filter(s => s && s.trim()) };
@@ -1822,6 +1834,7 @@ function wireEvents() {
         }
         if (rpe.value === '' && row.dataset.trpe !== '') rpe.value = row.dataset.trpe;
       }
+      if (on && row.dataset.restAuto === '1') RestTimer.start(Number(row.dataset.restSec) || 90);
       await saveSetRow(row);
       updatePrefillChip(row, Number(row.dataset.week), row.dataset.day);
       return;
