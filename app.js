@@ -58,6 +58,25 @@ function download(filename, text, mime) {
 function epley(w, r) { return r === 1 ? w : w * (1 + r / 30); }
 function brzycki(w, r) { return r === 1 ? w : w * 36 / (37 - r); }
 
+/* haptic tap (Android; silently ignored elsewhere) */
+function buzz(pattern) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* not available */ }
+}
+
+/* plate math: total kg -> "bar 20 + per side: 25 + 15" (20 kg bar, kg plates) */
+function plateText(total) {
+  const BAR = 20, SIZES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  if (!(total > 0)) return null;
+  if (total < BAR) return `${fmtNum(total)} kg is below the empty bar (20 kg)`;
+  let side = (total - BAR) / 2;
+  const out = [];
+  for (const p of SIZES) { while (side >= p - 1e-9) { out.push(fmtNum(p)); side -= p; } }
+  const rest = Math.round(side * 2 * 100) / 100;
+  let txt = `${fmtNum(total)} kg = bar 20` + (out.length ? ` + per side: ${out.join(' + ')}` : ' (empty bar)');
+  if (rest > 0) txt += ` · ${fmtNum(rest)} kg not plate-loadable`;
+  return txt;
+}
+
 /* ---------------------------------------------------------------- theme */
 
 const THEMES = [
@@ -269,6 +288,7 @@ async function render() {
   const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data'
     : (['planSetup', 'dayEdit', 'exPick'].includes(r.view) ? 'plans' : r.view);
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
+  if (r.view === 'log') WakeLock.acquire(); else WakeLock.release();
   const app = $('#app');
   app.scrollTop = 0;
   window.scrollTo(0, 0);
@@ -364,6 +384,15 @@ async function renderLog(app, week, dayId) {
   for (const s of allSets) {
     if (s.day === dayId && (s.week === week || s.week === week - 1)) App.setsCache.set(s.id, s);
   }
+
+  // PR baseline: best e1RM per exercise across ALL logged sets (for PR toasts)
+  App.prBest = new Map();
+  for (const s of allSets) {
+    if (!(s.wt > 0 && s.reps > 0)) continue;
+    const e1 = epley(s.wt, s.reps);
+    const b = App.prBest.get(s.ex);
+    if (!b || e1 > b.e1) App.prBest.set(s.ex, { e1 });
+  }
   App.sessionCache = await dbGet('sessions', sessionKey(week, dayId)) || null;
 
   const wDone = (App.sessionCache && App.sessionCache.warmupDone) || {};
@@ -421,6 +450,7 @@ async function renderLog(app, week, dayId) {
   });
 
   $$('.wu-check').forEach(cb => cb.addEventListener('change', async () => {
+    if (cb.checked) buzz(15);
     const s = await ensureSession(week, dayId);
     s.warmupDone = s.warmupDone || {};
     if (cb.checked) s.warmupDone[cb.dataset.i] = true; else delete s.warmupDone[cb.dataset.i];
@@ -474,12 +504,15 @@ function updatePrefillChip(row, week, dayId) {
   const slot = row.querySelector('.prefill-slot');
   slot.innerHTML = '';
   if (week <= 1) return;
-  const reps = row.querySelector('.f-reps').value;
-  const wt = row.querySelector('.f-wt').value;
-  if (reps !== '' || wt !== '') return;
   const prevKey = setKey(week - 1, dayId, row.dataset.ex, Number(row.dataset.set));
   const prev = App.setsCache.get(prevKey);
   if (!prev || (prev.reps == null && prev.wt == null)) return;
+  // ghost last week's values directly in the (empty) inputs
+  if (prev.reps != null) row.querySelector('.f-reps').placeholder = prev.reps;
+  if (prev.wt != null) row.querySelector('.f-wt').placeholder = fmtNum(prev.wt);
+  const reps = row.querySelector('.f-reps').value;
+  const wt = row.querySelector('.f-wt').value;
+  if (reps !== '' || wt !== '') return;
   const txt = `${prev.reps != null ? prev.reps : '?'} × ${prev.wt != null ? fmtNum(prev.wt) + ' kg' : '–'}`;
   slot.innerHTML = `<button type="button" class="prefill-chip" data-reps="${prev.reps != null ? prev.reps : ''}"
       data-wt="${prev.wt != null ? prev.wt : ''}" data-rpe="${prev.rpe != null ? prev.rpe : ''}">
@@ -528,6 +561,25 @@ async function saveSetRow(row) {
     await dbPut('sets', rec);
   }
   updateRowStatus(row);
+}
+
+/* PR toast: fires when a just-ticked set beats the best e1RM ever logged for
+   that exercise. First-ever data for an exercise sets the baseline silently
+   (no toast-spam on day 1 of a new plan). */
+function checkPR(row) {
+  if (!App.prBest) return;
+  const reps = parseNum(row.querySelector('.f-reps').value);
+  const wt = parseNum(row.querySelector('.f-wt').value);
+  if (!(reps > 0 && wt > 0)) return;
+  const e1 = epley(wt, reps);
+  const best = App.prBest.get(row.dataset.ex);
+  if (!best) { App.prBest.set(row.dataset.ex, { e1 }); return; }
+  if (e1 > best.e1 + 0.01) {
+    best.e1 = e1;
+    const name = row.querySelector('.ex-name').textContent;
+    toast(`🎉 PR! ${name}: ${fmtNum(wt)} kg × ${fmtNum(reps)} → e1RM ≈ ${fmtNum(roundHalf(e1))} kg`, 4200);
+    buzz([40, 60, 40]);
+  }
 }
 
 /* --------------------------------------------------------------- maxes */
@@ -1824,6 +1876,24 @@ async function importCSVFile(file) {
   render();
 }
 
+/* ----------------------------------------------------------- wake lock */
+/* Keeps the screen on while logging a session (Log view only). */
+
+const WakeLock = {
+  sentinel: null,
+  async acquire() {
+    if (!('wakeLock' in navigator)) return;
+    if (this.sentinel && !this.sentinel.released) return;
+    try { this.sentinel = await navigator.wakeLock.request('screen'); }
+    catch (e) { this.sentinel = null; /* low battery / not allowed */ }
+  },
+  async release() {
+    const s = this.sentinel;
+    this.sentinel = null;
+    if (s && !s.released) { try { await s.release(); } catch (e) { /* already gone */ } }
+  },
+};
+
 /* --------------------------------------------------------------- timer */
 
 const RestTimer = {
@@ -1908,6 +1978,7 @@ function wireEvents() {
   app.addEventListener('click', async e => {
     const stepBtn = e.target.closest('.step');
     if (stepBtn) {
+      buzz(10);
       const row = stepBtn.closest('.set-row');
       const input = row.querySelector(stepBtn.dataset.field === 'reps' ? '.f-reps' : '.f-wt');
       const cur = parseNum(input.value);
@@ -1933,6 +2004,7 @@ function wireEvents() {
       const row = doneBtn.closest('.set-row');
       const on = !doneBtn.classList.contains('on');
       doneBtn.classList.toggle('on', on);
+      if (on) buzz(30);
       if (on) {
         // smart defaults: fill empties from target / previous week
         const reps = row.querySelector('.f-reps');
@@ -1952,6 +2024,7 @@ function wireEvents() {
       }
       if (on && row.dataset.restAuto === '1') RestTimer.start(Number(row.dataset.restSec) || 90);
       await saveSetRow(row);
+      if (on) checkPR(row);
       updatePrefillChip(row, Number(row.dataset.week), row.dataset.day);
       return;
     }
@@ -2002,6 +2075,38 @@ function wireEvents() {
       render();
       return;
     }
+  });
+
+  // plate calculator: long-press (500 ms) the kg field of a set row
+  let plateHold = null, plateXY = null;
+  const cancelPlateHold = () => { if (plateHold) { clearTimeout(plateHold); plateHold = null; } };
+  app.addEventListener('pointerdown', e => {
+    const inp = e.target.closest('.f-wt');
+    if (!inp || !inp.closest('.set-row')) return;
+    plateXY = [e.clientX, e.clientY];
+    cancelPlateHold();
+    plateHold = setTimeout(() => {
+      plateHold = null;
+      const row = inp.closest('.set-row');
+      const w = parseNum(inp.value) != null ? parseNum(inp.value)
+        : (parseNum(row.dataset.twt) != null ? parseNum(row.dataset.twt) : parseNum(inp.placeholder));
+      const txt = w != null ? plateText(w) : null;
+      if (txt) { buzz(15); toast(txt, 5000); }
+      else toast('No weight to load — enter kg first', 2400);
+    }, 500);
+  });
+  app.addEventListener('pointerup', cancelPlateHold);
+  app.addEventListener('pointercancel', cancelPlateHold);
+  app.addEventListener('pointermove', e => {
+    if (plateHold && plateXY && (Math.abs(e.clientX - plateXY[0]) > 12 || Math.abs(e.clientY - plateXY[1]) > 12)) cancelPlateHold();
+  });
+  app.addEventListener('contextmenu', e => {
+    if (e.target.closest('.f-wt') && e.target.closest('.set-row')) e.preventDefault();
+  });
+
+  // wake lock is auto-released when the screen turns off / tab hides — re-grab it
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && App.program && route().view === 'log') WakeLock.acquire();
   });
 
   app.addEventListener('input', async e => {
