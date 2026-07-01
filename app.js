@@ -682,7 +682,7 @@ function maybeSessionComplete(row) {
   if (App.summaryShown === sid) return;
   App.summaryShown = sid;
   showSessionSummary({
-    done, vol,
+    week, dayId, done, vol,
     mins: tsMax > tsMin ? Math.round((tsMax - tsMin) / 60000) : null,
     prs: App.sessionPRs || 0,
   });
@@ -704,12 +704,14 @@ function showSessionSummary(o) {
         <div class="summary-stat"><b>${o.prs}</b><span>PR${o.prs === 1 ? '' : 's'} 🎉</span></div>
       </div>
       <div class="summary-actions">
+        ${exportOfferOn() ? '<button type="button" class="btn" id="summary-export">Export JSON</button>' : ''}
         <button type="button" class="btn accent" id="summary-close">Done</button>
       </div>
     </div>`;
   document.body.appendChild(div);
   buzz([30, 60, 30]);
   div.addEventListener('click', e => {
+    if (e.target.id === 'summary-export') { exportSessionJSON(o.week, o.dayId); return; }
     if (e.target === div || e.target.id === 'summary-close') div.remove();
   });
 }
@@ -1015,6 +1017,8 @@ function archiveItemsHtml(sets, sessions) {
         </summary>
         <ul>${rows}</ul>
         ${sess.notes ? `<p class="hist-notes">${esc(sess.notes)}</p>` : ''}
+        <div class="btn-row"><button type="button" class="btn small arc-export"
+          data-week="${sess.week}" data-day="${esc(sess.day)}">Export JSON (AI-Coach)</button></div>
       </details>`;
   }
   return { items, count: done.length };
@@ -1726,9 +1730,18 @@ async function renderSettings(app) {
       <h2>Farbschema</h2>
       <p class="muted hint">Wird sofort auf die ganze App angewendet — jederzeit änderbar.</p>
       <div class="theme-grid">${swatches}</div>
+    </div>
+    <div class="card">
+      <h2>AI-Coach Export</h2>
+      <label class="rest-toggle"><input type="checkbox" id="export-offer-toggle" ${exportOfferOn() ? 'checked' : ''}>
+        Export nach Session-Ende anbieten</label>
     </div>`;
   $$('.theme-swatch').forEach(b =>
     b.addEventListener('click', () => { setTheme(b.dataset.theme); render(); }));
+  $('#export-offer-toggle').addEventListener('change', e => {
+    localStorage.setItem('wl.exportOffer', e.target.checked ? '1' : '0');
+    toast(e.target.checked ? 'Export-Angebot aktiviert' : 'Export-Angebot deaktiviert');
+  });
 }
 
 async function renderData(app) {
@@ -1762,6 +1775,14 @@ async function renderData(app) {
       <div class="btn-row">
         <button type="button" class="btn" id="export-json">Export JSON (full backup)</button>
         <button type="button" class="btn" id="export-csv">Export CSV (sets)</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>AI-Coach Export</h2>
+      <p class="muted">Session-JSON (schema 1) für den AI-Trainer — program_id, day_id und week wie importiert.
+        Einzelne Sessions im <a href="#/archive">Archiv</a> exportieren; nach Session-Ende bietet die App den Export an.</p>
+      <div class="btn-row">
+        <button type="button" class="btn" id="export-coach-full">Gesamtes Log exportieren (JSON)</button>
       </div>
     </div>
     <div class="card">
@@ -1842,6 +1863,167 @@ async function exportCSV() {
   download(`training-logger-sets-${todayISO()}.csv`, rows.join('\r\n'), 'text/csv');
   localStorage.setItem('wl.lastExport', String(Date.now()));
   toast('CSV exported ✓');
+}
+
+/* ---------------------------------------------- AI-coach session export */
+/* Schema-1 session JSON for the downstream AI trainer. The whole point:
+   program_id / day_id / week / exercise names are echoed VERBATIM as
+   imported, so planned-vs-actual is a simple join on the coach side. */
+
+const exportOfferOn = () => localStorage.getItem('wl.exportOffer') !== '0';
+
+/* deterministic 4-char hash — keeps session_id stable across re-exports */
+function tinyHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36).slice(0, 4).padStart(4, '0');
+}
+
+/* ISO 8601 with the device's timezone offset, e.g. 2026-07-02T19:42:11+02:00 */
+function isoWithOffset(d) {
+  const p = n => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const a = Math.abs(off);
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${p(Math.floor(a / 60))}:${p(a % 60)}`;
+}
+
+function buildSessionExport(week, dayId, allSets, sessions, bwMap) {
+  const prog = App.program;
+  const sess = sessions.find(s => s.id === sessionKey(week, dayId)) || null;
+  const recs = new Map();
+  let tsMin = Infinity, tsMax = 0, doneCnt = 0, loggedCnt = 0;
+  for (const s of allSets) {
+    if (s.week !== week || s.day !== dayId) continue;
+    recs.set(`${s.ex}|${s.set}`, s);
+    loggedCnt++;
+    if (s.done) doneCnt++;
+    if (s.ts) { tsMin = Math.min(tsMin, s.ts); tsMax = Math.max(tsMax, s.ts); }
+  }
+  if (!sess && loggedCnt === 0) return null;
+
+  const day = getDay(dayId);
+  const src = day ? dayForWeek(day, week) : null;
+  const overlay = (day && !(day.weekOverride && day.weekOverride[week]) && day.weekTargets && day.weekTargets[week]) || null;
+
+  const exercises = [];
+  let expected = 0;
+  if (src) {
+    const blocks = ((src.plyo && src.plyo.blocks) || []).concat(src.blocks || []);
+    for (const block of blocks) {
+      for (const ex of block.exercises) {
+        const planned = exerciseSets(ex, block);
+        let n = planned.length;
+        for (const s of recs.values()) if (s.ex === ex.id && s.set >= n) n = s.set + 1;
+        expected += n;
+        const sets = [];
+        for (let i = 0; i < n; i++) {
+          const t0 = planned[Math.min(i, planned.length - 1)] || {};
+          const t = (overlay && overlay[ex.id]) ? Object.assign({}, t0, overlay[ex.id]) : t0;
+          const r = recs.get(`${ex.id}|${i}`);
+          sets.push({
+            set: i + 1,
+            target_reps: t.reps != null ? String(t.reps) : null,
+            target_rpe: t.rpe != null ? t.rpe : null,
+            target_weight_kg: t.weight != null ? t.weight : null,
+            reps: r && r.reps != null ? r.reps : null,
+            weight_kg: r && r.wt > 0 ? r.wt : null,   // null for bodyweight, never 0
+            rpe: r && r.rpe != null ? r.rpe : null,
+            done: !!(r && r.done),
+          });
+        }
+        exercises.push({
+          block: block.id != null ? String(block.id) : null,
+          label: ex.label != null ? String(ex.label) : null,
+          exercise: ex.name,
+          sets,
+        });
+      }
+    }
+  } else {
+    // session from a block that's no longer the active program: actuals only
+    const byEx = new Map();
+    const sorted = Array.from(recs.values()).sort((a, b) => (a.ts || 0) - (b.ts || 0) || a.set - b.set);
+    for (const s of sorted) {
+      if (!byEx.has(s.ex)) byEx.set(s.ex, []);
+      byEx.get(s.ex).push(s);
+    }
+    for (const [exId, list] of byEx) {
+      expected += list.length;
+      exercises.push({
+        block: null, label: null, exercise: prettyName(exId),
+        sets: list.map(s => ({
+          set: s.set + 1, target_reps: null, target_rpe: null, target_weight_kg: null,
+          reps: s.reps != null ? s.reps : null, weight_kg: s.wt > 0 ? s.wt : null,
+          rpe: s.rpe != null ? s.rpe : null, done: !!s.done,
+        })),
+      });
+    }
+  }
+
+  const tsFull = tsMin !== Infinity ? isoWithOffset(new Date(tsMin)) : null;
+  const dateISO = (sess && sess.date) || (tsFull ? tsFull.slice(0, 10) : todayISO());
+  const off = isoWithOffset(new Date()).slice(19);
+  const progId = src ? (prog.id || null) : null;
+
+  const out = {
+    schema: 1,
+    session_id: `${dateISO}_${dayId}_${tinyHash(`${progId}|${week}|${dayId}`)}`,
+    exported_at: isoWithOffset(new Date()),
+    date: (tsFull && tsFull.slice(0, 10) === dateISO) ? tsFull : `${dateISO}T00:00:00${off}`,
+    program_id: progId,
+    program_name: src ? prog.name : null,
+    day_id: dayId,
+    day_name: day ? day.name : dayId,
+    week,
+    status: doneCnt === 0 ? 'skipped' : (doneCnt >= expected ? 'completed' : 'partial'),
+    duration_min: tsMax > tsMin ? Math.round((tsMax - tsMin) / 60000) : null,
+    notes: (sess && sess.notes) || '',
+    exercises,
+  };
+  const bw = bwMap && bwMap.get(week);
+  if (bw != null) out.bodyweight_kg = bw;
+  return out;
+}
+
+/* Web Share (Android TWA -> share sheet -> OneDrive) with download fallback */
+async function shareOrDownload(filename, text) {
+  try {
+    const file = new File([text], filename, { type: 'application/json' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: filename });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;   // user closed the share sheet
+  }
+  download(filename, text, 'application/json');
+}
+
+async function exportSessionJSON(week, dayId) {
+  const [sets, sessions, bw] = await Promise.all([dbGetAll('sets'), dbGetAll('sessions'), dbGetAll('bodyweight')]);
+  const obj = buildSessionExport(week, dayId, sets, sessions, new Map(bw.map(b => [b.week, b.kg])));
+  if (!obj) { toast('Für diese Session ist nichts geloggt'); return; }
+  const name = `tl-export_${obj.program_id || 'unknown'}_${obj.session_id.slice(0, 10)}_${dayId}.json`;
+  await shareOrDownload(name, JSON.stringify(obj, null, 2));
+}
+
+async function exportAllSessionsJSON() {
+  const [sets, sessions, bw] = await Promise.all([dbGetAll('sets'), dbGetAll('sessions'), dbGetAll('bodyweight')]);
+  const bwMap = new Map(bw.map(b => [b.week, b.kg]));
+  const seen = new Set();
+  const out = [];
+  const ordered = sessions.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')
+    || a.week - b.week || a.day.localeCompare(b.day));
+  for (const sess of ordered) {
+    if (seen.has(sess.id)) continue;
+    seen.add(sess.id);
+    const obj = buildSessionExport(sess.week, sess.day, sets, sessions, bwMap);
+    if (obj) out.push(obj);
+  }
+  if (!out.length) { toast('Keine geloggten Sessions zum Exportieren'); return; }
+  await shareOrDownload(`tl-export-full_${todayISO()}.json`, JSON.stringify(out, null, 2));
+  toast(`${out.length} Session${out.length === 1 ? '' : 's'} exportiert ✓`);
 }
 
 async function importJSONFile(file) {
@@ -2213,9 +2395,13 @@ function wireEvents() {
       return;
     }
 
+    const arcExp = e.target.closest('.arc-export');
+    if (arcExp) { exportSessionJSON(Number(arcExp.dataset.week), arcExp.dataset.day); return; }
+
     // data view buttons
     if (e.target.id === 'export-json') { exportJSON(); return; }
     if (e.target.id === 'export-csv') { exportCSV(); return; }
+    if (e.target.id === 'export-coach-full') { exportAllSessionsJSON(); return; }
     if (e.target.id === 'import-json-btn') { $('#import-json-file').click(); return; }
     if (e.target.id === 'import-csv-btn') { $('#import-csv-file').click(); return; }
     if (e.target.id === 'import-program-btn') { $('#import-program-file').click(); return; }
