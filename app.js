@@ -176,7 +176,18 @@ function blocksToHtml(week, dayId, blocks, wt) {
       }
     } else {
       const ex = block.exercises[0];
-      exerciseSets(ex, block).forEach((t0, i) => { const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0; rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest); });
+      const planned = exerciseSets(ex, block);
+      // extra ad-hoc sets logged beyond the plan re-render too
+      let n = planned.length;
+      if (App.setsCache) for (const s of App.setsCache.values()) {
+        if (s.week === week && s.day === dayId && s.ex === ex.id && s.set >= n) n = s.set + 1;
+      }
+      for (let i = 0; i < n; i++) {
+        const t0 = planned[Math.min(i, planned.length - 1)];
+        const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0;
+        rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest);
+      }
+      rowsHtml += `<button type="button" class="add-set" data-ex="${esc(ex.id)}">+ Set</button>`;
     }
     html += `
       <section class="block band-${bi % 2}">
@@ -289,6 +300,7 @@ async function render() {
     : (['planSetup', 'dayEdit', 'exPick'].includes(r.view) ? 'plans' : r.view);
   $$('#bottomnav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
   if (r.view === 'log') WakeLock.acquire(); else WakeLock.release();
+  RpeSheet.hide();
   const app = $('#app');
   app.scrollTop = 0;
   window.scrollTo(0, 0);
@@ -317,7 +329,7 @@ async function renderHome(app) {
   $('#topbar-title').textContent = 'Training Logger';
   $('#topbar-back').hidden = true;
 
-  const allSets = await dbGetAll('sets');
+  const [allSets, allSessions] = await Promise.all([dbGetAll('sets'), dbGetAll('sessions')]);
   const doneCount = {};   // `${week}|${day}` -> done
   const anyCount = {};
   for (const s of allSets) {
@@ -350,8 +362,30 @@ async function renderHome(app) {
 
   const nudge = backupNudgeHtml(allSets.length > 0);
 
+  // consistency strip: last 7 days as dots + sessions this week (Mon-Sun)
+  let streak = '';
+  if (allSets.length > 0) {
+    const trained = new Set(allSessions.filter(s => (doneCount[s.id] || 0) > 0 && s.date).map(s => s.date));
+    const localISO = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const now = new Date();
+    let dots = '';
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      dots += `<span class="streak-dot${trained.has(localISO(d)) ? ' on' : ''}${i === 0 ? ' today' : ''}"></span>`;
+    }
+    const wd = (now.getDay() + 6) % 7; // days since Monday
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - wd);
+    let weekCount = 0;
+    for (const iso of trained) if (new Date(iso + 'T12:00:00') >= monday) weekCount++;
+    streak = `<div class="card streak-card">
+        <div class="streak-dots">${dots}</div>
+        <div class="streak-label"><b>${weekCount}</b> session${weekCount === 1 ? '' : 's'} this week</div>
+      </div>`;
+  }
+
   app.innerHTML = `
     ${nudge}
+    ${streak}
     <div class="home-head">
       <h1>${esc(App.program.name)}</h1>
       <p class="muted">${App.program.weeks} weeks · ${App.program.days.map(d => esc(d.name)).join(' / ')}</p>
@@ -384,6 +418,9 @@ async function renderLog(app, week, dayId) {
   for (const s of allSets) {
     if (s.day === dayId && (s.week === week || s.week === week - 1)) App.setsCache.set(s.id, s);
   }
+
+  App.sessionPRs = 0;
+  App.summaryShown = null;
 
   // PR baseline: best e1RM per exercise across ALL logged sets (for PR toasts)
   App.prBest = new Map();
@@ -442,7 +479,7 @@ async function renderLog(app, week, dayId) {
     if (rec) {
       row.querySelector('.f-reps').value = rec.reps != null ? rec.reps : '';
       row.querySelector('.f-wt').value = rec.wt != null ? rec.wt : '';
-      row.querySelector('.f-rpe').value = rec.rpe != null ? rec.rpe : '';
+      setRpeBtn(row.querySelector('.f-rpe'), rec.rpe != null ? rec.rpe : '');
       row.querySelector('.f-done').classList.toggle('on', !!rec.done);
     }
     updatePrefillChip(row, week, dayId);
@@ -459,13 +496,55 @@ async function renderLog(app, week, dayId) {
   }));
 }
 
-function rpeOptionsHtml(selected) {
-  let html = '<option value="">RPE</option>';
-  for (let v = 6; v <= 10; v += 0.5) {
-    html += `<option value="${v}" ${selected === v ? 'selected' : ''}>${v}</option>`;
-  }
-  return html;
+/* rest-timer icon shared by the per-row buttons */
+const SVG_TIMER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.8M9.5 2.5h5M12 2.5V6"/></svg>';
+
+/* RPE is a tap-button + bottom-sheet chip picker (one tap beats the native
+   select's full-screen picker). Value lives in the button's data-v. */
+function setRpeBtn(btn, v) {
+  const s = (v == null || v === '') ? '' : String(v);
+  btn.dataset.v = s;
+  btn.textContent = s === '' ? 'RPE' : '@' + s;
+  btn.classList.toggle('empty', s === '');
 }
+
+const RpeSheet = {
+  row: null,
+  el() {
+    let el = $('#rpe-sheet');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'rpe-sheet';
+      el.hidden = true;
+      let chips = '';
+      for (let v = 6; v <= 10; v += 0.5) chips += `<button type="button" data-v="${v}">${v}</button>`;
+      el.innerHTML = `
+        <div class="timer-head"><span>RPE</span><button type="button" id="rpe-close" aria-label="close">▾</button></div>
+        <div class="rpe-grid">${chips}<button type="button" data-v="">–</button></div>`;
+      document.body.appendChild(el);
+      el.addEventListener('click', async e => {
+        if (e.target.id === 'rpe-close') { this.hide(); return; }
+        const b = e.target.closest('[data-v]');
+        if (!b || !this.row) return;
+        buzz(10);
+        setRpeBtn(this.row.querySelector('.f-rpe'), b.dataset.v);
+        await saveSetRow(this.row);
+        this.hide();
+      });
+    }
+    return el;
+  },
+  show(row) {
+    this.row = row;
+    const el = this.el();
+    el.querySelector('.timer-head span').textContent =
+      `RPE — ${row.querySelector('.ex-name').textContent} · S${Number(row.dataset.set) + 1}`;
+    const cur = row.querySelector('.f-rpe').dataset.v;
+    el.querySelectorAll('.rpe-grid button').forEach(b => b.classList.toggle('on', b.dataset.v === cur && cur !== ''));
+    el.hidden = false;
+  },
+  hide() { const el = $('#rpe-sheet'); if (el) el.hidden = true; this.row = null; },
+};
 
 function setRowHtml(week, dayId, ex, setIdx, target, rest) {
   const key = setKey(week, dayId, ex.id, setIdx);
@@ -492,9 +571,9 @@ function setRowHtml(week, dayId, ex, setIdx, target, rest) {
         <input type="number" class="f-wt" inputmode="decimal" min="0" step="2.5" placeholder="kg">
         <button type="button" class="step" data-field="wt" data-d="2.5" aria-label="plus 2.5 kg">+</button>
       </div>
-      <select class="f-rpe" aria-label="RPE">${rpeOptionsHtml(null)}</select>
+      <button type="button" class="f-rpe empty" aria-label="RPE" data-v="">RPE</button>
       <button type="button" class="f-done" aria-label="set done">✓</button>
-      <button type="button" class="f-timer" aria-label="rest timer">⏱</button>
+      <button type="button" class="f-timer" aria-label="rest timer">${SVG_TIMER}</button>
     </div>
     <div class="prefill-slot"></div>
   </div>`;
@@ -523,7 +602,7 @@ function updateRowStatus(row) {
   const done = row.querySelector('.f-done').classList.contains('on');
   const reps = row.querySelector('.f-reps').value;
   const wt = row.querySelector('.f-wt').value;
-  const rpe = row.querySelector('.f-rpe').value;
+  const rpe = row.querySelector('.f-rpe').dataset.v;
   row.classList.toggle('st-done', done);
   row.classList.toggle('st-partial', !done && (reps !== '' || wt !== '' || rpe !== ''));
 }
@@ -547,7 +626,7 @@ async function saveSetRow(row) {
   const dayId = row.dataset.day;
   const reps = parseNum(row.querySelector('.f-reps').value);
   const wt = parseNum(row.querySelector('.f-wt').value);
-  const rpe = parseNum(row.querySelector('.f-rpe').value);
+  const rpe = parseNum(row.querySelector('.f-rpe').dataset.v);
   const done = row.querySelector('.f-done').classList.contains('on');
   const id = row.dataset.key;
 
@@ -576,10 +655,63 @@ function checkPR(row) {
   if (!best) { App.prBest.set(row.dataset.ex, { e1 }); return; }
   if (e1 > best.e1 + 0.01) {
     best.e1 = e1;
+    App.sessionPRs = (App.sessionPRs || 0) + 1;
     const name = row.querySelector('.ex-name').textContent;
     toast(`🎉 PR! ${name}: ${fmtNum(wt)} kg × ${fmtNum(reps)} → e1RM ≈ ${fmtNum(roundHalf(e1))} kg`, 4200);
     buzz([40, 60, 40]);
   }
+}
+
+/* session summary: when the last planned set of the day is ticked, celebrate
+   once with sets / volume / duration / PRs */
+function maybeSessionComplete(row) {
+  const week = Number(row.dataset.week), dayId = row.dataset.day;
+  const day = getDay(dayId);
+  if (!day) return;
+  let total = 0;
+  forEachSet(dayForWeek(day, week), () => total++);
+  let done = 0, vol = 0, tsMin = Infinity, tsMax = 0;
+  for (const s of App.setsCache.values()) {
+    if (s.week !== week || s.day !== dayId || !s.done) continue;
+    done++;
+    if (s.reps > 0 && s.wt > 0) vol += s.reps * s.wt;
+    if (s.ts) { tsMin = Math.min(tsMin, s.ts); tsMax = Math.max(tsMax, s.ts); }
+  }
+  if (total === 0 || done < total) return;
+  const sid = sessionKey(week, dayId);
+  if (App.summaryShown === sid) return;
+  App.summaryShown = sid;
+  showSessionSummary({
+    done, vol,
+    mins: tsMax > tsMin ? Math.round((tsMax - tsMin) / 60000) : null,
+    prs: App.sessionPRs || 0,
+  });
+}
+
+function showSessionSummary(o) {
+  const old = $('#summary-sheet');
+  if (old) old.remove();
+  const div = document.createElement('div');
+  div.id = 'summary-sheet';
+  div.innerHTML = `
+    <div class="summary-card">
+      <div class="summary-big">💪</div>
+      <h2>Session complete!</h2>
+      <div class="summary-stats">
+        <div class="summary-stat"><b>${o.done}</b><span>sets done</span></div>
+        <div class="summary-stat"><b>${fmtNum(Math.round(o.vol))}</b><span>kg volume</span></div>
+        <div class="summary-stat"><b>${o.mins != null && o.mins > 0 ? o.mins + ' min' : '—'}</b><span>duration</span></div>
+        <div class="summary-stat"><b>${o.prs}</b><span>PR${o.prs === 1 ? '' : 's'} 🎉</span></div>
+      </div>
+      <div class="summary-actions">
+        <button type="button" class="btn accent" id="summary-close">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+  buzz([30, 60, 30]);
+  div.addEventListener('click', e => {
+    if (e.target === div || e.target.id === 'summary-close') div.remove();
+  });
 }
 
 /* --------------------------------------------------------------- maxes */
@@ -714,14 +846,16 @@ async function renderProgress(app) {
     (a.date || '').localeCompare(b.date || '') || a.week - b.week || a.day.localeCompare(b.day));
   const sessIndex = new Map(ordered.map((s, i) => [s.id, i]));
 
-  // per exercise: heaviest weight per session
+  // per exercise: best e1RM (Epley) per session — better trend signal than
+  // heaviest weight because it credits rep PRs at the same load
   const byEx = new Map();
   for (const s of allSets) {
     if (!(s.wt > 0)) continue;
+    const e1 = roundHalf(epley(s.wt, s.reps > 0 ? s.reps : 1));
     const sid = `${s.week}|${s.day}`;
     if (!byEx.has(s.ex)) byEx.set(s.ex, new Map());
     const m = byEx.get(s.ex);
-    m.set(sid, Math.max(m.get(sid) || 0, s.wt));
+    m.set(sid, Math.max(m.get(sid) || 0, e1));
   }
 
   const orderedEx = [];
@@ -738,7 +872,7 @@ async function renderProgress(app) {
       return sess && sess.date ? shortDate(sess.date) : 'W' + e[0].split('|')[0];
     });
     liftCards += `<div class="card chart-card">
-        <h2>${esc(prettyName(exId))}</h2>
+        <h2>${esc(prettyName(exId))} <span class="exlib-count">e1RM (kg)</span></h2>
         ${barChartSvg(values, labels)}
       </div>`;
   }
@@ -2020,11 +2154,11 @@ function wireEvents() {
           const v = (prev && prev.wt != null) ? prev.wt : parseNum(row.dataset.twt);
           if (v != null) wt.value = v;
         }
-        if (rpe.value === '' && row.dataset.trpe !== '') rpe.value = row.dataset.trpe;
+        if (rpe.dataset.v === '' && row.dataset.trpe !== '') setRpeBtn(rpe, row.dataset.trpe);
       }
       if (on && row.dataset.restAuto === '1') RestTimer.start(Number(row.dataset.restSec) || 90);
       await saveSetRow(row);
-      if (on) checkPR(row);
+      if (on) { checkPR(row); maybeSessionComplete(row); }
       updatePrefillChip(row, Number(row.dataset.week), row.dataset.day);
       return;
     }
@@ -2034,9 +2168,34 @@ function wireEvents() {
       const row = chip.closest('.set-row');
       if (chip.dataset.reps !== '') row.querySelector('.f-reps').value = chip.dataset.reps;
       if (chip.dataset.wt !== '') row.querySelector('.f-wt').value = chip.dataset.wt;
-      if (chip.dataset.rpe !== '') row.querySelector('.f-rpe').value = chip.dataset.rpe;
+      if (chip.dataset.rpe !== '') setRpeBtn(row.querySelector('.f-rpe'), chip.dataset.rpe);
       await saveSetRow(row);
       row.querySelector('.prefill-slot').innerHTML = '';
+      return;
+    }
+
+    const rpeBtn = e.target.closest('.f-rpe');
+    if (rpeBtn && rpeBtn.closest('.set-row')) { RpeSheet.show(rpeBtn.closest('.set-row')); return; }
+
+    const addBtn = e.target.closest('.add-set');
+    if (addBtn) {
+      buzz(10);
+      const block = addBtn.closest('.block');
+      const rows = Array.from(block.querySelectorAll('.set-row')).filter(r => r.dataset.ex === addBtn.dataset.ex);
+      const last = rows[rows.length - 1];
+      if (!last) return;
+      const idx = Number(last.dataset.set) + 1;
+      const ex = { id: last.dataset.ex, label: last.querySelector('.ex-label').textContent, name: last.querySelector('.ex-name').textContent };
+      const target = {
+        reps: last.dataset.treps,
+        rpe: last.dataset.trpe === '' ? null : Number(last.dataset.trpe),
+        weight: last.dataset.twt === '' ? null : Number(last.dataset.twt),
+      };
+      const rest = { auto: last.dataset.restAuto === '1', sec: Number(last.dataset.restSec) || 90 };
+      last.insertAdjacentHTML('afterend', setRowHtml(Number(last.dataset.week), last.dataset.day, ex, idx, target, rest));
+      const fresh = last.nextElementSibling;
+      updatePrefillChip(fresh, Number(fresh.dataset.week), fresh.dataset.day);
+      updateRowStatus(fresh);
       return;
     }
 
@@ -2145,10 +2304,6 @@ function wireEvents() {
 
   app.addEventListener('change', async e => {
     const t = e.target;
-    if (t.classList.contains('f-rpe')) {
-      await saveSetRow(t.closest('.set-row'));
-      return;
-    }
     if (t.id === 'session-date') {
       const r = route();
       const sess = await ensureSession(r.week, r.day);
