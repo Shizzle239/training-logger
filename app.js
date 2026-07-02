@@ -157,11 +157,13 @@ function forEachSet(day, cb) {
   }
 }
 
-/* render a list of straight/superset blocks into loggable set-row HTML */
-function blocksToHtml(week, dayId, blocks, wt) {
+/* render a list of straight/superset blocks into loggable set-row HTML;
+   defRest applies when a block has no own rest config (e.g. plyo: auto 30 s) */
+function blocksToHtml(week, dayId, blocks, wt, defRest) {
   let html = '';
   (blocks || []).forEach((block, bi) => {
     const names = block.exercises.map(e => `<span class="bh-ex"><b>${esc(e.label)}</b> ${esc(e.name)}</span>`).join('<span class="bh-plus">+</span>');
+    const rest = block.rest || defRest;
     let rowsHtml = '';
     if (block.type === 'superset') {
       const rounds = block.rounds || 3;
@@ -170,7 +172,7 @@ function blocksToHtml(week, dayId, blocks, wt) {
         for (const ex of block.exercises) {
           const t0 = exerciseSets(ex, block)[r];
           const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0;
-          groupRows += setRowHtml(week, dayId, ex, r, t, block.rest);
+          groupRows += setRowHtml(week, dayId, ex, r, t, rest);
         }
         rowsHtml += `<div class="round-group"><div class="round-label">Round ${r + 1} / ${rounds}</div>${groupRows}</div>`;
       }
@@ -185,7 +187,7 @@ function blocksToHtml(week, dayId, blocks, wt) {
       for (let i = 0; i < n; i++) {
         const t0 = planned[Math.min(i, planned.length - 1)];
         const t = (wt && wt[ex.id]) ? Object.assign({}, t0, wt[ex.id]) : t0;
-        rowsHtml += setRowHtml(week, dayId, ex, i, t, block.rest);
+        rowsHtml += setRowHtml(week, dayId, ex, i, t, rest);
       }
       rowsHtml += `<button type="button" class="add-set" data-ex="${esc(ex.id)}">+ Set</button>`;
     }
@@ -196,6 +198,37 @@ function blocksToHtml(week, dayId, blocks, wt) {
       </section>`;
   });
   return html;
+}
+
+/* Old-style plyo `items` ({name, scheme}) become real loggable blocks so every
+   priming set has a done-checkbox. Idempotent; exercise ids are derived from the
+   name so logged sets keep matching across reloads. "3×5"-style schemes become
+   3 sets; anything else is 1 set with the scheme's first part as the rep target
+   (the "rest 30 s" part of old schemes is covered by the auto rest timer). */
+function normalizePlyo(day) {
+  const pl = day && day.plyo;
+  if (!pl || (pl.blocks && pl.blocks.length) || !Array.isArray(pl.items) || !pl.items.length) return;
+  const blocks = [];
+  for (const it of pl.items) {
+    const name = typeof it === 'string' ? it : (it && it.name);
+    if (!name) continue;
+    const sch = (it && typeof it === 'object' && it.scheme != null) ? String(it.scheme) : '';
+    const m = /^(\d+)\s*[x×]\s*(.+)$/i.exec(sch.trim());
+    const sets = m ? Math.max(1, parseInt(m[1], 10)) : 1;
+    const reps = ((m ? m[2] : sch).split('·')[0] || '').trim() || '–';
+    const slug = 'plyo-' + String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const label = 'P' + (blocks.length + 1);
+    blocks.push({ id: label, exercises: [{ id: slug, label, name, target: { reps } }], rounds: sets });
+  }
+  if (blocks.length) pl.blocks = blocks;
+}
+
+function normalizeProgram(p) {
+  if (!p || !Array.isArray(p.days)) return;
+  for (const day of p.days) {
+    normalizePlyo(day);
+    if (day.weekOverride) for (const k of Object.keys(day.weekOverride)) normalizePlyo(day.weekOverride[k]);
+  }
 }
 
 /* exercise lookup by id across program */
@@ -294,6 +327,7 @@ function route() {
 }
 
 async function render() {
+  normalizeProgram(App.program);
   const r = route();
   // 'archive', 'exercises' and 'settings' live under the Data tab — keep that tab highlighted
   const navView = (r.view === 'archive' || r.view === 'exercises' || r.view === 'settings') ? 'data'
@@ -447,7 +481,7 @@ async function renderLog(app, week, dayId) {
   const pBlocks = (src.plyo && src.plyo.blocks) || [];
   const pItems = (src.plyo && src.plyo.items) || [];
   const plyo = pBlocks.length
-    ? `<div class="section-label">${esc((src.plyo && src.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks, wt)
+    ? `<div class="section-label">${esc((src.plyo && src.plyo.title) || 'Plyometrics & Priming')}</div>` + blocksToHtml(week, dayId, pBlocks, wt, { auto: true, sec: 30 })
     : (pItems.length ? `
     <details class="card info-block">
       <summary>${esc((src.plyo && src.plyo.title) || 'Plyo / Core')}</summary>
