@@ -1,7 +1,7 @@
 /* sw.js — offline-first service worker. Bump VERSION on every deploy. */
 'use strict';
 
-const VERSION = 'v1.21.0';
+const VERSION = 'v1.22.0';
 const CACHE = `workout-logger-${VERSION}`;
 
 const ASSETS = [
@@ -11,6 +11,7 @@ const ASSETS = [
   './db.js',
   './xlsx.js',
   './app.js',
+  './sync.js',
   './program.json',
   './manifest.json',
   './icons/icon-192.png',
@@ -40,6 +41,7 @@ self.addEventListener('fetch', event => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;   // hub API — live network only, never cached (v1.22.0)
 
   // navigations: cache-first with index.html fallback (offline app shell)
   if (req.mode === 'navigate') {
